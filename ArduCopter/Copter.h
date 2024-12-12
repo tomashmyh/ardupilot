@@ -789,6 +789,7 @@ private:
     void failsafe_terrain_on_event();
     void gpsglitch_check();
     void failsafe_deadreckon_check();
+    void set_mode_RTL_or_ALT_HOLD(ModeReason reason);
     void set_mode_RTL_or_land_with_pause(ModeReason reason);
     void set_mode_SmartRTL_or_RTL(ModeReason reason);
     void set_mode_SmartRTL_or_land_with_pause(ModeReason reason);
