@@ -1593,7 +1593,7 @@ void AP_OSD_Screen::draw_sats(uint8_t x, uint8_t y)
     AP_GPS & gps = AP::gps();
     uint8_t nsat = gps.num_sats();
     bool flash = (nsat < osd->warn_nsat) || (gps.status() < AP_GPS::GPS_OK_FIX_3D);
-    backend->write(x, y, flash, "%c%c%2u", SYMBOL(SYM_SAT_L), SYMBOL(SYM_SAT_R), nsat);
+    backend->write(x, y, flash, "%c%c%3u", SYMBOL(SYM_SAT_L), SYMBOL(SYM_SAT_R), nsat);
 }
 
 #if AP_BATTERY_ENABLED
