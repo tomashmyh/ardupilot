@@ -29,6 +29,9 @@
 #include <AP_Vehicle/AP_Vehicle_Type.h>
 #include <AP_RCTelemetry/AP_CRSF_Telem.h>
 #include <AP_SerialManager/AP_SerialManager.h>
+#include <AP_Param/AP_Param.h>
+#include <GCS_MAVLink/GCS.h>
+#include <GCS_MAVLink/GCS_MAVLink.h>
 
 #define CRSF_SUBSET_RC_STARTING_CHANNEL_BITS        5
 #define CRSF_SUBSET_RC_STARTING_CHANNEL_MASK        0x1F
@@ -457,6 +460,13 @@ bool AP_RCProtocol_CRSF::decode_crsf_packet()
         case CRSF_FRAMETYPE_LINK_STATISTICS_TX:
             process_link_stats_tx_frame((uint8_t*)&_frame.payload);
             break;
+        case CRSF_FRAMETYPE_SOVA_UPLINK:
+            {
+                uint8_t payload_len = _frame.length - 2; // (?)_frame.length returns full size of the package
+                                                         // remove 2 bytes for length and type
+                process_salamander_uplink_packet(payload_len, (const uint8_t*)(&_frame.payload));
+            }
+            break;
         default:
             break;
     }
@@ -655,6 +665,26 @@ void AP_RCProtocol_CRSF::process_link_stats_tx_frame(const void* data)
         _link_status.rssi = derive_scaled_lq_value(link->link_quality);
     } else {
         _link_status.rssi = link->rssi_percent * 255.0f * 0.01f;
+    }
+}
+
+// process Salamander uplink packet
+void AP_RCProtocol_CRSF::process_salamander_uplink_packet(const uint8_t length, const uint8_t* data)
+{
+    if (!_ul_mavlink_receiver_componenet_id) {
+        enum ap_var_type ptype;
+        _ul_mavlink_receiver_componenet_id = (AP_Int16*)AP_Param::find("UL_MAVLINK_RECV", &ptype);
+        if (!_ul_mavlink_receiver_componenet_id) {
+            GCS_SEND_TEXT(MAV_SEVERITY_ERROR, "Can't get UL_MAVLINK_RECV value");
+            return;
+        }
+    }
+
+    uint8_t ul_cid = _ul_mavlink_receiver_componenet_id->get(); // !!! converting from int
+    uint8_t system_id = gcs().sysid_this_mav();
+    GCS_MAVLINK *mav = GCS_MAVLINK::find_by_mavtype_and_compid(MAV_TYPE_ONBOARD_CONTROLLER, ul_cid, system_id);
+    if (mav) {
+        mav->proxy_data64_packet(length, data);
     }
 }
 

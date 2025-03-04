@@ -705,6 +705,12 @@ const AP_Param::Info Copter::var_info[] = {
     // @Units: m
     // @User: Advanced
     GSCALAR(throw_altitude_max, "THROW_ALT_MAX", 0),
+
+    // @Param: UL_MAVLINK_RECV
+    // @DisplayName: Component id where we should proxy uplink messages
+    // @Description: Component id where we should proxy uplink messages
+    // @User: Advanced
+    GSCALAR(ul_mavlink_receiver_component_id, "UL_MAVLINK_RECV", MAV_COMP_ID_ONBOARD_COMPUTER),
 #endif
 
 #if OSD_ENABLED || OSD_PARAM_ENABLED

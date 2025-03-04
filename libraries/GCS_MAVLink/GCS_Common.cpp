@@ -2431,6 +2431,11 @@ void GCS_MAVLINK::send_ahrs()
 }
 #endif  // AP_AHRS_ENABLED
 
+void GCS_MAVLINK::proxy_data64_packet(const uint8_t len, const uint8_t *data) const
+{
+    mavlink_msg_data64_send(chan, 0, len, data);
+}
+
 /*
     send a statustext text string to specific MAVLink bitmask
 */
