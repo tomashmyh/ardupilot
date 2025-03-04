@@ -382,6 +382,9 @@ public:
         k_param_throw_altitude_min,
         k_param_throw_altitude_max,
 
+        // Barvinok uplink
+        k_param_ul_mavlink_receiver_component_id = 270,
+
         // the k_param_* space is 9-bits in size
         // 511: reserved
     };
@@ -477,6 +480,8 @@ public:
     // Acro parameters
     AP_Int8                 acro_trainer;
 #endif
+
+    AP_Int16                ul_mavlink_receiver_component_id;
 
     // Note: keep initializers here in the same order as they are declared
     // above.

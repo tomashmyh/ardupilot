@@ -104,6 +104,7 @@ public:
         // Custom Telemetry Frames 0x7F,0x80
         CRSF_FRAMETYPE_AP_CUSTOM_TELEM_LEGACY = 0x7F,   // as suggested by Remo Masina for fw < 4.06
         CRSF_FRAMETYPE_AP_CUSTOM_TELEM = 0x80,          // reserved for ArduPilot by TBS, requires fw >= 4.06
+        CRSF_FRAMETYPE_SOVA_UPLINK = 0x85,              // SOVA uplink over CRSF package
     };
 
     // Command IDs for CRSF_FRAMETYPE_COMMAND
@@ -337,6 +338,7 @@ private:
     void process_link_stats_frame(const void* data);
     void process_link_stats_rx_frame(const void* data);
     void process_link_stats_tx_frame(const void* data);
+    void process_salamander_uplink_packet(const uint8_t length, const uint8_t* data);
     // crsf v3 decoding
     void decode_variable_bit_channels(const uint8_t* data, uint8_t frame_length, uint8_t nchannels, uint16_t *values);
 
@@ -363,6 +365,8 @@ private:
     static const uint16_t RF_MODE_RATES[RFMode::RF_MODE_MAX_MODES];
 
     AP_HAL::UARTDriver *_uart;
+
+    AP_Int16 *_ul_mavlink_receiver_componenet_id = nullptr;
 };
 
 namespace AP {
