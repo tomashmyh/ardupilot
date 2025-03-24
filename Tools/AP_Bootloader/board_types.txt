@@ -443,6 +443,7 @@ AP_HW_AEROFOX_H7                     7110
 
 # please fill gaps in the above ranges rather than adding past ID #7199
 
+AP_HW_DEFD_H7_BASIC                  9999
 
 # OpenDroneID enabled boards. Use 10000 + the base board ID
 AP_HW_CubeOrange_ODID               10140

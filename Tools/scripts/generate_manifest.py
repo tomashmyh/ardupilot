@@ -110,6 +110,7 @@ brand_map = {
     "MicoAir743-AIO" : ("MicoAir H743 AIO", "MicoAir"),
     "MicoAir743v2" : ("MicoAir H743 v2.0", "MicoAir"),
     "GEPRCF745BTHD": ("TAKER F745 BT","GEPRC"),
+    "DEFD-H7" : ("DEFD H7 Basic V2.1", "DEFD H7"),
 }
 
 class Firmware():
