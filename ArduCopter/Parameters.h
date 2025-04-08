@@ -382,7 +382,7 @@ public:
         k_param_throw_altitude_min,
         k_param_throw_altitude_max,
 
-        // Barvinok uplink
+        // ELRS uplink
         k_param_ul_mavlink_receiver_component_id = 270,
 
         // the k_param_* space is 9-bits in size

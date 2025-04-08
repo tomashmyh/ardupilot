@@ -338,7 +338,7 @@ private:
     void process_link_stats_frame(const void* data);
     void process_link_stats_rx_frame(const void* data);
     void process_link_stats_tx_frame(const void* data);
-    void process_salamander_uplink_packet(const uint8_t length, const uint8_t* data);
+    void process_sova_uplink_packet(const uint8_t length, const uint8_t* data);
     // crsf v3 decoding
     void decode_variable_bit_channels(const uint8_t* data, uint8_t frame_length, uint8_t nchannels, uint16_t *values);
 
