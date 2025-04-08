@@ -464,7 +464,7 @@ bool AP_RCProtocol_CRSF::decode_crsf_packet()
             {
                 uint8_t payload_len = _frame.length - 2; // (?)_frame.length returns full size of the package
                                                          // remove 2 bytes for length and type
-                process_salamander_uplink_packet(payload_len, (const uint8_t*)(&_frame.payload));
+                process_sova_uplink_packet(payload_len, (const uint8_t*)(&_frame.payload));
             }
             break;
         default:
@@ -668,8 +668,8 @@ void AP_RCProtocol_CRSF::process_link_stats_tx_frame(const void* data)
     }
 }
 
-// process Salamander uplink packet
-void AP_RCProtocol_CRSF::process_salamander_uplink_packet(const uint8_t length, const uint8_t* data)
+// process sova uplink packet
+void AP_RCProtocol_CRSF::process_sova_uplink_packet(const uint8_t length, const uint8_t* data)
 {
     if (!_ul_mavlink_receiver_componenet_id) {
         enum ap_var_type ptype;
@@ -680,9 +680,9 @@ void AP_RCProtocol_CRSF::process_salamander_uplink_packet(const uint8_t length, 
         }
     }
 
-    uint8_t ul_cid = _ul_mavlink_receiver_componenet_id->get(); // !!! converting from int
+    const uint8_t ul_cid = _ul_mavlink_receiver_componenet_id->get(); // !!! converting from int
     uint8_t system_id = gcs().sysid_this_mav();
-    GCS_MAVLINK *mav = GCS_MAVLINK::find_by_mavtype_and_compid(MAV_TYPE_ONBOARD_CONTROLLER, ul_cid, system_id);
+    const GCS_MAVLINK *mav = GCS_MAVLINK::find_by_mavtype_and_compid(MAV_TYPE_ONBOARD_CONTROLLER, ul_cid, system_id);
     if (mav) {
         mav->proxy_data64_packet(length, data);
     }
