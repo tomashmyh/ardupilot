@@ -358,6 +358,8 @@ AP_HW_GEPRC_TAKER_H743               1502
 
 AP_HW_StellarH7V2                    1503
 
+# This is actually the same ID as MatekH743
+AP_HW_LuckyStrike                    1013
 
 AP_HW_HGLRCF405V4                    1524
 
