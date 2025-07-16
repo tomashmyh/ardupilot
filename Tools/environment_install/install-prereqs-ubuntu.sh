@@ -14,10 +14,11 @@ ARDUPILOT_TOOLS="Tools/autotest"
 
 ASSUME_YES=false
 QUIET=false
+VENV_PATH="$HOME/venv-ardupilot"
 sep="##############################################"
 
 OPTIND=1  # Reset in case getopts has been used previously in the shell.
-while getopts "yq" opt; do
+while getopts "yqd:" opt; do
     case "$opt" in
         \?)
             exit 1
@@ -25,6 +26,11 @@ while getopts "yq" opt; do
         y)  ASSUME_YES=true
             ;;
         q)  QUIET=true
+            ;;
+        d)
+            if [ -n "$OPTARG" ]; then
+                VENV_PATH="$OPTARG"
+            fi
             ;;
     esac
 done
@@ -376,10 +382,10 @@ fi
 
 if [ -n "$PYTHON_VENV_PACKAGE" ]; then
     $APT_GET install $PYTHON_VENV_PACKAGE
-    python3 -m venv --system-site-packages $HOME/venv-ardupilot
+    python3 -m venv --system-site-packages $VENV_PATH
 
     # activate it:
-    SOURCE_LINE="source $HOME/venv-ardupilot/bin/activate"
+    SOURCE_LINE="source $VENV_PATH/bin/activate"
     $SOURCE_LINE
     PIP_USER_ARGUMENT=""
 
