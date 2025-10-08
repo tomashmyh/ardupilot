@@ -454,7 +454,8 @@ private:
 
     // enum for processing options
     enum class Options {
-        JammingExpected     = (1<<0),
+        JammingExpected                    = (1<<0),
+        ForceDeadReckonWhileUnderJamming   = (1<<1),
     };
 
 // Possible values for _flowUse
