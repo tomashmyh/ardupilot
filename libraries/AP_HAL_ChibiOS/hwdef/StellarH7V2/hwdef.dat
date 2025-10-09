@@ -1,5 +1,7 @@
 # hw definition file for Stellar H7V2
 
+include ../SalamanderAddition/hwdef.dat
+
 # MCU class and specific type
 MCU STM32H7xx STM32H743xx
 
@@ -170,10 +172,8 @@ BARO BMP280 I2C:0:0x76
 
 define HAL_OS_FATFS_IO 1
 
-
-define HAL_CRSF_TELEM_ENABLED 0
-
 # setup for OSD
 define OSD_ENABLED 1
 define HAL_OSD_TYPE_DEFAULT 1
 ROMFS_WILDCARD libraries/AP_OSD/fonts/font*.bin
+

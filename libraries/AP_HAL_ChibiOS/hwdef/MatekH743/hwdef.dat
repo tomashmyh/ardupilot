@@ -1,6 +1,8 @@
 # hw definition file for processing by chibios_pins.py
 # for Matek H743-WING
 
+include ../SalamanderAddition/hwdef.dat
+
 # MCU class and specific type
 MCU STM32H7xx STM32H743xx
 
@@ -89,8 +91,6 @@ define HAL_DEFAULT_AIRSPEED_PIN 4
 
 PC5 RSSI_ADC ADC1
 define BOARD_RSSI_ANA_PIN 8
-
-define HAL_CRSF_TELEM_ENABLED 0
 
 # LED
 # green LED1 marked as B/E
