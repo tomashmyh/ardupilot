@@ -279,6 +279,10 @@ const AP_Param::GroupInfo AP_GPS::var_info[] = {
     AP_SUBGROUPINFO(params[1], "2_", 33, AP_GPS, AP_GPS::Params),
 #endif
 
+    // @Group: _VLD_
+    // @Path: AP_GPS_Validator.cpp
+    AP_SUBGROUPINFO(_gps_validator, "_VLD_", 34, AP_GPS, AP_GPS::AP_GPS_Validator),
+
     AP_GROUPEND
 };
 
@@ -479,14 +483,20 @@ uint64_t AP_GPS::istate_time_to_epoch_ms(uint16_t gps_week, uint32_t gps_ms)
  */
 uint64_t AP_GPS::time_epoch_usec(uint8_t instance) const
 {
-    const GPS_State &istate = state[instance];
+    return time_epoch_usec(state[instance]);
+}
+
+/**
+   calculate current time since the unix epoch in microseconds
+ */
+uint64_t AP_GPS::time_epoch_usec(const AP_GPS::GPS_State& istate) const {
     if ((istate.last_gps_time_ms == 0 && istate.last_corrected_gps_time_us == 0) || istate.time_week == 0) {
         return 0;
     }
     uint64_t fix_time_ms;
     // add in the time since the last fix message
     if (istate.last_corrected_gps_time_us != 0) {
-        fix_time_ms = istate_time_to_epoch_ms(istate.time_week, drivers[instance]->get_last_itow_ms());
+        fix_time_ms = istate_time_to_epoch_ms(istate.time_week, drivers[istate.instance]->get_last_itow_ms());
         return (fix_time_ms*1000ULL) + (AP_HAL::micros64() - istate.last_corrected_gps_time_us);
     } else {
         fix_time_ms = istate_time_to_epoch_ms(istate.time_week, istate.time_week_ms);
@@ -1120,6 +1130,10 @@ void AP_GPS::update_primary(void)
     // if primary is not enabled try first instance
     if (get_type(primary_param) == GPS_TYPE_NONE) {
         primary_param = 0;
+    }
+
+    if (!_gps_validator.trust_gps(state[primary_param])) {
+        state[primary_param].status = NO_FIX;
     }
 
     if ((GPSAutoSwitch)_auto_switch.get() == GPSAutoSwitch::NONE) {

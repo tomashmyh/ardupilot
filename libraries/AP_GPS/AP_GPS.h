@@ -523,6 +523,7 @@ public:
     uint64_t time_epoch_usec(void) const {
         return time_epoch_usec(primary_instance);
     }
+    uint64_t time_epoch_usec(const AP_GPS::GPS_State& istate) const;
 
     uint64_t last_message_epoch_usec(uint8_t instance) const;
     uint64_t last_message_epoch_usec() const {
@@ -790,6 +791,53 @@ private:
 
     // used for flight testing with GPS yaw loss
     bool _force_disable_gps_yaw;
+
+    class AP_GPS_Validator
+    {
+    public:
+        static const struct AP_Param::GroupInfo var_info[];
+
+        AP_GPS_Validator();
+
+        bool trust_gps(const AP_GPS::GPS_State& state);
+
+    private:
+        enum class Action : uint8_t {
+            FIRST                = 0,
+
+            DO_NOT_INFROM        = FIRST,
+            ONLY_INFORM          = 1,
+            DISABLE_GPS_USE      = 2,
+
+            LAST                 = DISABLE_GPS_USE,
+        };
+
+    private:
+        bool is_satellites_ok(const AP_GPS::GPS_State& state) const;
+        bool is_horizontal_speed_ok(const AP_GPS::GPS_State& state) const;
+        bool is_vertical_speed_ok(const AP_GPS::GPS_State& state) const;
+        bool is_altitude_ok(const AP_GPS::GPS_State& state) const;
+        bool is_time_ok(const AP_GPS::GPS_State& state);
+
+        Action get_gps_failure_action() const;
+        static bool should_inform(Action action);
+
+    private:
+        AP_Int8 is_enabled;
+        AP_Int8 action_on_failure;
+        AP_Int8 min_sat_count;
+        AP_Int16 max_horizontal_speed_mps;
+        AP_Int16 max_vertical_speed_mps;
+        AP_Int16 max_allowed_alt_m;
+        AP_Int16 min_allowed_alt_m;
+        AP_Int16 time_accuracy_s;
+
+        bool is_gps_good = false;
+        AP_GPS::GPS_State last_state;
+        uint64_t last_gps_time_us;
+    };
+
+    AP_GPS_Validator _gps_validator;
 
     // logging support
     void Write_GPS(uint8_t instance);
