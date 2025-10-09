@@ -1,6 +1,8 @@
 # hw definition file for processing by chibios_pins.py
 # for DefDrones H743
 
+include ../SalamanderAddition/hwdef.dat
+
 # MCU class and specific type
 MCU STM32H7xx STM32H743xx
 
@@ -236,13 +238,9 @@ PD11 RELAY_6 OUTPUT LOW OPENDRAIN GPIO(81) #SERIAL3 POWER RELAY LOW ENABLE
 PB2 RELAY_7 OUTPUT LOW OPENDRAIN GPIO(75) #UART7 POWER RELAY +5VSERIAL5_EN		LOW ENABLE
 
 
-
-
 PA15 FPC_RESERVE INPUT PULLDOWN GPIO(69) #reserved for FPC cable extensions
 PD10 TEST_POIN_105 INPUT PULLDOWN GPIO(80)
 PC1 TEST_POINT_109 INPUT PULLDOWN GPIO(82)
-
-define HAL_CRSF_TELEM_ENABLED 0
 
 
 # LED
