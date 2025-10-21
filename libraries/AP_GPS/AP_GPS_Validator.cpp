@@ -86,7 +86,7 @@ const AP_Param::GroupInfo AP_GPS::AP_GPS_Validator::var_info[] = {
 };
 
 AP_GPS::AP_GPS_Validator::AP_GPS_Validator() : last_state{},
-                                               last_gps_time_us(AP_HAL::micros64())
+                                               last_gps_time_us(UINT64_MAX)
 {
     AP_Param::setup_object_defaults(this, var_info);
 }
