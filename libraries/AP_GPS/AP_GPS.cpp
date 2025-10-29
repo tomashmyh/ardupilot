@@ -868,6 +868,7 @@ void AP_GPS::update_instance(uint8_t instance)
         state[instance].status = NO_GPS;
         state[instance].hdop = GPS_UNKNOWN_DOP;
         state[instance].vdop = GPS_UNKNOWN_DOP;
+        state[instance].num_sats = 0;
         return;
     }
     if (locked_ports & (1U<<instance)) {
@@ -900,6 +901,7 @@ void AP_GPS::update_instance(uint8_t instance)
             state[instance].instance = instance;
             state[instance].hdop = GPS_UNKNOWN_DOP;
             state[instance].vdop = GPS_UNKNOWN_DOP;
+            state[instance].num_sats = 0;
             timing[instance].last_message_time_ms = tnow;
             timing[instance].delta_time_ms = GPS_TIMEOUT_MS;
             // do not try to detect again if type is MAV or UAVCAN
