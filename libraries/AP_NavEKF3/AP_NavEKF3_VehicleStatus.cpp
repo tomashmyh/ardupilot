@@ -99,7 +99,7 @@ void NavEKF3_core::calcGpsGoodToAlign(void)
     // Check that the horizontal GPS vertical velocity is reasonable after noise filtering
     // This check can only be used if the vehicle is stationary
     bool gpsHorizVelFail;
-    if (onGround) {
+    if (gpsDataNew.have_vxy && onGround) {
         gpsHorizVelFilt = 0.1f * gpsDataDelayed.vel.xy().length() + 0.9f * gpsHorizVelFilt;
         gpsHorizVelFilt = constrain_ftype(gpsHorizVelFilt,-10.0f,10.0f);
         gpsHorizVelFail = (fabsF(gpsHorizVelFilt) > 0.3f*checkScaler) && (frontend->_gpsCheck & MASK_GPS_HORIZ_SPD);
