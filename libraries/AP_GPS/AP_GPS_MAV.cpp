@@ -90,6 +90,7 @@ void AP_GPS_MAV::handle_msg(const mavlink_message_t &msg)
                 }
 
                 state.velocity = vel;
+                state.have_horizontal_velocity = true;
                 velocity_to_speed_course(state);
             }
 
@@ -171,6 +172,7 @@ void AP_GPS_MAV::handle_msg(const mavlink_message_t &msg)
             }
             Vector3f vel(packet.vn*0.01f, packet.ve*0.01f, packet.vd*0.01f);
             state.velocity = vel;
+            state.have_horizontal_velocity = true;
             if (packet.vd != 0) {
                 state.have_vertical_velocity = true;
             }

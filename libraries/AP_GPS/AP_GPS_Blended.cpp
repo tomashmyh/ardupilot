@@ -217,6 +217,7 @@ void AP_GPS_Blended::calc_state(void)
     state.horizontal_accuracy = 1e6f;
     state.vertical_accuracy = 1e6f;
     state.have_vertical_velocity = false;
+    state.have_horizontal_velocity = false;
     state.have_speed_accuracy = false;
     state.have_horizontal_accuracy = false;
     state.have_vertical_accuracy = false;
@@ -261,6 +262,10 @@ void AP_GPS_Blended::calc_state(void)
         if (gps.state[i].have_vertical_accuracy && gps.state[i].vertical_accuracy > 0.0f && gps.state[i].vertical_accuracy < state.vertical_accuracy) {
             state.have_vertical_accuracy = true;
             state.vertical_accuracy = gps.state[i].vertical_accuracy;
+        }
+
+        if (gps.state[i].have_horizontal_velocity) {
+            state.have_horizontal_velocity = true;
         }
 
         if (gps.state[i].have_vertical_velocity) {

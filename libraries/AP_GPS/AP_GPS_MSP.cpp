@@ -54,6 +54,7 @@ void AP_GPS_MSP::handle_msp(const MSP::msp_gps_data_message_t &pkt)
     state.vdop = GPS_UNKNOWN_DOP;
 
     state.have_vertical_velocity = true;
+    state.have_horizontal_velocity = true;
     Vector3f vel;
     vel.x = pkt.ned_vel_north * 0.01;
     vel.y = pkt.ned_vel_east * 0.01;

@@ -326,6 +326,7 @@ AP_GPS_SBP2::_attempt_state_update()
         // Set flags appropriately
         //
         state.have_vertical_velocity   = true;
+        state.have_horizontal_velocity = true;
         state.have_speed_accuracy      = !is_zero(state.speed_accuracy);
         state.have_horizontal_accuracy = !is_zero(state.horizontal_accuracy);
         state.have_vertical_accuracy   = !is_zero(state.vertical_accuracy);

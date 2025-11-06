@@ -107,6 +107,7 @@ bool AP_GPS_SITL::read(void)
     state.have_horizontal_accuracy = true;
     state.have_vertical_accuracy = true;
     state.have_vertical_velocity = true;
+    state.have_horizontal_velocity = true;
 
     // state.horizontal_accuracy = pkt.horizontal_pos_accuracy;
     // state.vertical_accuracy = pkt.vertical_pos_accuracy;

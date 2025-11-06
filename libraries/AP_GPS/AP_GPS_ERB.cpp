@@ -200,6 +200,7 @@ AP_GPS_ERB::_parse_gps(void)
         // Heading 2D deg * 100000 rescaled to deg * 100
         state.ground_course = wrap_360(_buffer.vel.heading_2d * 1.0e-5f);
         state.have_vertical_velocity = true;
+        state.have_horizontal_velocity = true;
         state.velocity.x = _buffer.vel.vel_north * 0.01f;
         state.velocity.y = _buffer.vel.vel_east * 0.01f;
         state.velocity.z = _buffer.vel.vel_down * 0.01f;

@@ -468,6 +468,7 @@ AP_GPS_SBF::process_message(void)
             state.velocity.z = (float)(-temp.Vu);
 
             state.have_vertical_velocity = true;
+            state.have_horizontal_velocity = true;
 
             velocity_to_speed_course(state);
             state.rtk_age_ms = temp.MeanCorrAge * 10;
