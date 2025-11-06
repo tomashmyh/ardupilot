@@ -35,6 +35,12 @@ public:
     bool have_vertical_velocity() const {
         return have_vertical_velocity(primary_sensor());
     }
+    bool have_horizontal_velocity(uint8_t instance) const {
+        return _RGPI[instance].have_horizontal_velocity;
+    }
+    bool have_horizontal_velocity() const {
+        return have_horizontal_velocity(primary_sensor());
+    }
     bool horizontal_accuracy(uint8_t instance, float &hacc) const {
         hacc = _RGPJ[instance].hacc;
         return _RGPI[instance].horizontal_accuracy_returncode;

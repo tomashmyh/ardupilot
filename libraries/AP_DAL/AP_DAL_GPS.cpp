@@ -36,6 +36,7 @@ void AP_DAL_GPS::start_frame()
         RGPJ.lng = loc.lng;
         RGPJ.alt = loc.alt;
         RGPI.have_vertical_velocity = gps.have_vertical_velocity(i);
+        RGPI.have_horizontal_velocity = gps.have_horizontal_velocity(i);
 
         RGPI.horizontal_accuracy_returncode = gps.horizontal_accuracy(i, RGPJ.hacc);
         RGPI.vertical_accuracy_returncode = gps.vertical_accuracy(i, RGPJ.vacc);
