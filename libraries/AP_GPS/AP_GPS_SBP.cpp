@@ -274,6 +274,7 @@ AP_GPS_SBP::_attempt_state_update()
         state.velocity[1]       = (float)(last_vel_ned.e * 1.0e-3);
         state.velocity[2]       = (float)(last_vel_ned.d * 1.0e-3);
         state.have_vertical_velocity = true;
+        state.have_horizontal_velocity = true;
 
         velocity_to_speed_course(state);
 

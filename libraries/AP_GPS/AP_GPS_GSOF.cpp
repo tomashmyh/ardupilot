@@ -209,6 +209,7 @@ AP_GPS_GSOF::pack_state_data()
         fill_3d_velocity();
         state.velocity.z = -vel.vertical_velocity;
         state.have_vertical_velocity = true;
+        state.have_horizontal_velocity = true;
     }
 
     state.hdop = (uint16_t)(dop.hdop * 100);

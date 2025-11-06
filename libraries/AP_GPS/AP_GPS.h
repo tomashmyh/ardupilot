@@ -211,6 +211,7 @@ public:
         float vertical_accuracy;            ///< vertical RMS accuracy estimate in m
         float gps_yaw_accuracy;           ///< heading accuracy of the GPS in degrees
         bool have_vertical_velocity;      ///< does GPS give vertical velocity? Set to true only once available.
+        bool have_horizontal_velocity;    ///< does GPS give horizontal velocity? Set to true only once available.
         bool have_speed_accuracy;         ///< does GPS give speed accuracy? Set to true only once available.
         bool have_horizontal_accuracy;    ///< does GPS give horizontal position accuracy? Set to true only once available.
         bool have_vertical_accuracy;      ///< does GPS give vertical position accuracy? Set to true only once available.
@@ -470,6 +471,14 @@ public:
     }
     bool have_vertical_velocity(void) const {
         return have_vertical_velocity(primary_instance);
+    }
+
+    // return true if the GPS supports horizontal velocity values
+    bool have_horizontal_velocity(uint8_t instance) const {
+        return state[instance].have_horizontal_velocity;
+    }
+    bool have_horizontal_velocity(void) const {
+        return have_horizontal_velocity(primary_instance);
     }
 
     // return true if the GPS currently has yaw available

@@ -271,6 +271,7 @@ bool AP_GPS_NMEA::_have_new_message()
         if (_last_AGRICA_ms != 0) {
             // we have lost AGRICA
             state.have_gps_yaw = false;
+            state.have_horizontal_velocity = false;
             state.have_vertical_velocity = false;
             state.have_speed_accuracy = false;
             state.have_horizontal_accuracy = false;
@@ -405,6 +406,7 @@ bool AP_GPS_NMEA::_term_complete()
                     state.velocity.y = _phd.fields[1] * 0.01;
                     state.velocity.z = _phd.fields[2] * 0.01;
                     state.have_vertical_velocity = true;
+                    state.have_horizontal_velocity = true;
                     _last_vvelocity_ms = now;
                     // we prefer a true 3D velocity when available
                     velocity_to_speed_course(state);
@@ -435,6 +437,7 @@ bool AP_GPS_NMEA::_term_complete()
                     state.velocity.x = _ksxt.fields[17] * kmh_to_mps;
                     state.velocity.z = _ksxt.fields[18] * -kmh_to_mps;
                     state.have_vertical_velocity = true;
+                    state.have_horizontal_velocity = true;
                     _last_vvelocity_ms = now;
                     // we prefer a true 3D velocity when available
                     velocity_to_speed_course(state);
@@ -467,6 +470,7 @@ bool AP_GPS_NMEA::_term_complete()
                 state.horizontal_accuracy = ag.pos_stddev.xy().length();
                 state.vertical_accuracy = ag.pos_stddev.z;
                 state.have_vertical_velocity = true;
+                state.have_horizontal_velocity = true;
                 state.have_speed_accuracy = true;
                 state.have_horizontal_accuracy = true;
                 state.have_vertical_accuracy = true;

@@ -105,6 +105,7 @@ void AP_GPS_Backend::fill_3d_velocity(void)
     state.velocity.x = state.ground_speed * cosf(gps_heading);
     state.velocity.y = state.ground_speed * sinf(gps_heading);
     state.velocity.z = 0;
+    state.have_horizontal_velocity = true;
     state.have_vertical_velocity = false;
 }
 

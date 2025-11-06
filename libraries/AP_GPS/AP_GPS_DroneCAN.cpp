@@ -338,6 +338,7 @@ void AP_GPS_DroneCAN::handle_velocity(const float vx, const float vy, const floa
     if (!isnan(vx)) {
         const Vector3f vel(vx, vy, vz);
         interim_state.velocity = vel;
+        interim_state.have_horizontal_velocity = true;
         velocity_to_speed_course(interim_state);
         // assume we have vertical velocity if we ever get a non-zero Z velocity
         if (!isnan(vel.z) && !is_zero(vel.z)) {
@@ -347,6 +348,7 @@ void AP_GPS_DroneCAN::handle_velocity(const float vx, const float vy, const floa
         }
     } else {
         interim_state.have_vertical_velocity = false;
+        interim_state.have_horizontal_velocity = false;
     }
 }
 
@@ -440,6 +442,7 @@ void AP_GPS_DroneCAN::handle_fix2_msg(const uavcan_equipment_gnss_Fix2& msg, uin
         interim_state.num_sats = msg.sats_used;
     } else {
         interim_state.have_vertical_velocity = false;
+        interim_state.have_horizontal_velocity = false;
         interim_state.have_vertical_accuracy = false;
         interim_state.have_horizontal_accuracy = false;
         interim_state.have_speed_accuracy = false;
