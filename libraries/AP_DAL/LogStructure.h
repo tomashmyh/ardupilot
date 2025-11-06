@@ -208,6 +208,7 @@ struct log_RGPI {
     uint8_t get_lag_returncode:1;
     uint8_t speed_accuracy_returncode:1;
     uint8_t gps_yaw_deg_returncode:1;
+    uint8_t have_horizontal_velocity:1;
     uint8_t status;
     uint8_t num_sats;
     uint8_t instance;
