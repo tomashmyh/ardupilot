@@ -591,6 +591,7 @@ private:
         uint8_t     sensor_idx;     // unique integer identifying the GPS sensor
         bool        corrected;      // true when the position and velocity have been corrected for sensor position
         bool        have_vz;        // true when vertical velocity is valid
+        bool        have_vxy;       // true when horizontal velocity is valid
     };
 
     struct mag_elements : EKF_obs_element_t {

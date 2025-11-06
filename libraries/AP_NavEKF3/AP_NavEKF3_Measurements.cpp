@@ -586,6 +586,7 @@ void NavEKF3_core::readGpsData()
 
     // read the NED velocity from the GPS
     gpsDataNew.vel = gps.velocity(selected_gps).toftype();
+    gpsDataNew.have_vxy = gps.have_horizontal_velocity(selected_gps);
     gpsDataNew.have_vz = gps.have_vertical_velocity(selected_gps);
 
     // position and velocity are not yet corrected for sensor position
