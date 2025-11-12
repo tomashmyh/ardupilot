@@ -826,7 +826,7 @@ private:
         bool is_horizontal_speed_ok(const AP_GPS::GPS_State& state) const;
         bool is_vertical_speed_ok(const AP_GPS::GPS_State& state) const;
         bool is_altitude_ok(const AP_GPS::GPS_State& state) const;
-        bool is_time_ok(const AP_GPS::GPS_State& state);
+        bool is_time_ok(const AP_GPS::GPS_State& state, uint64_t gps_time_us) const;
 
         Action get_gps_failure_action() const;
         static bool should_inform(Action action);
@@ -839,11 +839,13 @@ private:
         AP_Int16 max_vertical_speed_mps;
         AP_Int16 max_allowed_alt_m;
         AP_Int16 min_allowed_alt_m;
-        AP_Int16 time_accuracy_s;
+        AP_Int16 time_accuracy_ms;
 
         bool is_gps_good = false;
         AP_GPS::GPS_State last_state;
         uint64_t last_gps_time_us;
+        uint64_t last_gps_state_change_us;
+        const uint16_t CHANGE_STATE_DELAY_S = 5;
     };
 
     AP_GPS_Validator _gps_validator;
