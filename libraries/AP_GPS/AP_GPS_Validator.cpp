@@ -77,16 +77,17 @@ const AP_Param::GroupInfo AP_GPS::AP_GPS_Validator::var_info[] = {
 
     // @Param: TIME_ACR
     // @DisplayName: Time accuracy
-    // @Description: Defines time accuracy in seconds to consider GPS as a good
-    // @Units: s
+    // @Description: Defines time accuracy in miliseconds to consider GPS as a good
+    // @Units: ms
     // @User: Advanced
-    AP_GROUPINFO("TIME_A", 8, AP_GPS::AP_GPS_Validator, time_accuracy_s, 5),
+    AP_GROUPINFO("TIME_A", 8, AP_GPS::AP_GPS_Validator, time_accuracy_ms, 10),
 
     AP_GROUPEND
 };
 
 AP_GPS::AP_GPS_Validator::AP_GPS_Validator() : last_state{},
-                                               last_gps_time_us(UINT64_MAX)
+                                               last_gps_time_us(UINT64_MAX),
+                                               last_gps_state_change_us(0)
 {
     AP_Param::setup_object_defaults(this, var_info);
 }
@@ -97,44 +98,57 @@ bool AP_GPS::AP_GPS_Validator::trust_gps(const AP_GPS::GPS_State& state) {
     }
 
     const auto action = get_gps_failure_action();
+
+    const uint64_t gps_time_us = AP::gps().time_epoch_usec(state);
+    const uint64_t gps_state_change_diff_s = (gps_time_us - last_gps_state_change_us) * 1e-6;
+
     const auto inform = should_inform(action);
 
     const bool was_gps_good = is_gps_good;
 
-    bool is_gps_good_fresh = is_satellites_ok(state);
-    if (!is_gps_good_fresh && was_gps_good && inform) {
+    bool is_ok = is_satellites_ok(state);
+    if (!is_ok && was_gps_good && inform) {
         GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "GPS %d: not enough satellites", state.instance + 1);
     }
-    is_gps_good = is_gps_good_fresh;
+    is_gps_good = is_ok;
 
-    is_gps_good_fresh = is_horizontal_speed_ok(state);
-    if (!is_gps_good_fresh && was_gps_good && is_gps_good && inform) {
+    is_ok = is_horizontal_speed_ok(state);
+    if (!is_ok && was_gps_good && is_gps_good && inform) {
         GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "GPS %d: horizontal speed failure", state.instance + 1);
     }
-    is_gps_good &= is_gps_good_fresh;
+    is_gps_good &= is_ok;
 
-    is_gps_good_fresh = is_vertical_speed_ok(state);
-    if (!is_gps_good_fresh && was_gps_good && is_gps_good && inform) {
+    is_ok = is_vertical_speed_ok(state);
+    if (!is_ok && was_gps_good && is_gps_good && inform) {
         GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "GPS %d: vertical speed failure", state.instance + 1);
     }
-    is_gps_good &= is_gps_good_fresh;
+    is_gps_good &= is_ok;
 
-    is_gps_good_fresh = is_altitude_ok(state);
-    if (!is_gps_good_fresh && was_gps_good && is_gps_good && inform) {
+    is_ok = is_altitude_ok(state);
+    if (!is_ok && was_gps_good && is_gps_good && inform) {
         GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "GPS %d: altitude failure", state.instance + 1);
     }
-    is_gps_good &= is_gps_good_fresh;
+    is_gps_good &= is_ok;
 
-    is_gps_good_fresh = is_time_ok(state);
-    if (!is_gps_good_fresh && was_gps_good && is_gps_good && inform) {
+    is_ok = is_time_ok(state, gps_time_us);
+    if (!is_ok && was_gps_good && is_gps_good && inform) {
         GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "GPS %d: time accuracy failure", state.instance + 1);
     }
-    is_gps_good &= is_gps_good_fresh;
+    is_gps_good &= is_ok;
 
     last_state = state;
+    last_gps_time_us = gps_time_us;
 
     if (is_gps_good && !was_gps_good && inform) {
         GCS_SEND_TEXT(MAV_SEVERITY_INFO, "GPS %d is good for flight", state.instance + 1);
+    }
+
+    const auto should_change_state = gps_state_change_diff_s > CHANGE_STATE_DELAY_S && is_gps_good;
+
+    if (should_change_state) {
+        last_gps_state_change_us = gps_time_us;
+    } else {
+        is_gps_good = was_gps_good;
     }
 
     return (action == Action::DISABLE_GPS_USE) ? is_gps_good : true;
@@ -179,11 +193,8 @@ bool AP_GPS::AP_GPS_Validator::is_altitude_ok(const AP_GPS::GPS_State& state) co
     return altitude_m >= min_allowed_alt_m.get() && altitude_m <= max_allowed_alt_m.get();
 }
 
-bool AP_GPS::AP_GPS_Validator::is_time_ok(const AP_GPS::GPS_State& state) {
-    const uint64_t gps_time_us = AP::gps().time_epoch_usec(state);
-    bool is_ok = ((last_gps_time_us - gps_time_us) >= time_accuracy_s * 1e6);
-    last_gps_time_us = gps_time_us;
-    return is_ok;
+bool AP_GPS::AP_GPS_Validator::is_time_ok(const AP_GPS::GPS_State& state, uint64_t gps_time_us) const {
+    return (gps_time_us - last_gps_time_us) >= (time_accuracy_ms * 1e3);
 }
 
 AP_GPS::AP_GPS_Validator::Action AP_GPS::AP_GPS_Validator::get_gps_failure_action() const {
