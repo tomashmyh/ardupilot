@@ -283,6 +283,14 @@ const AP_Param::GroupInfo AP_GPS::var_info[] = {
     // @Path: AP_GPS_Validator.cpp
     AP_SUBGROUPINFO(_gps_validator, "_VLD_", 34, AP_GPS, AP_GPS::AP_GPS_Validator),
 
+
+    // @Param: _VISNAV_SYNC
+    // @DisplayName: Enable VisNav sync
+    // @Description: Used only by companion computers to control GPS sync
+    // @Values: 0:No,1:Yes
+    // @User: Advanced
+    AP_GROUPINFO("_VISNAV_SYNC", 35, AP_GPS, _is_visnav_sync_enabled, 0),
+
     AP_GROUPEND
 };
 
