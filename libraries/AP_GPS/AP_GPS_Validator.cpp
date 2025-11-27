@@ -93,7 +93,8 @@ AP_GPS::AP_GPS_Validator::AP_GPS_Validator() : last_state{},
 }
 
 bool AP_GPS::AP_GPS_Validator::trust_gps(const AP_GPS::GPS_State& state) {
-    if (!is_enabled) {
+    // We validate only GPS that have 2D and higher fix. All other statuses are properly handled by ardupilot
+    if (!is_enabled || state.status < AP_GPS::GPS_OK_FIX_2D) {
         return true;
     }
 
