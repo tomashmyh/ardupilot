@@ -612,6 +612,70 @@ public:
     uint8_t get_auto_switch_type() const { return _auto_switch; }
 #endif
 
+    class AP_GPS_Validator
+    {
+    public:
+        static const struct AP_Param::GroupInfo var_info[];
+    public:
+        enum class Action : uint8_t {
+            FIRST                      = 0,
+
+            ONLY_INFORM                = FIRST,
+            ONLY_DISABLE_GPS_USE       = 1,
+            INFORM_AND_DISABLE_GPS_USE = 2,
+
+            LAST                       = INFORM_AND_DISABLE_GPS_USE,
+        };
+
+        AP_GPS_Validator();
+
+        bool trust_gps(const AP_GPS::GPS_State& state);
+        void apply_enable_state(bool enabled);
+        void change_action_on_failure(AP_GPS_Validator::Action action);
+
+    protected:
+        virtual uint32_t now_ms() const;
+
+    private:
+        enum class FailureReason : uint8_t {
+            NONE = 0,
+            SATS,
+            HSPEED,
+            VSPEED,
+            ALT,
+            TIME,
+        };
+
+    private:
+        bool is_satellites_ok(const AP_GPS::GPS_State& state) const;
+        bool is_horizontal_speed_ok(const AP_GPS::GPS_State& state, uint32_t now_ms) const;
+        bool is_vertical_speed_ok(const AP_GPS::GPS_State& state, uint32_t now_ms) const;
+        bool is_altitude_ok(const AP_GPS::GPS_State& state) const;
+        bool is_time_ok(const AP_GPS::GPS_State& state, uint32_t gps_time_ms) const;
+        FailureReason first_failure_reason(const AP_GPS::GPS_State& state, uint32_t now_ms) const;
+
+        Action get_gps_failure_action() const;
+        static bool should_inform(Action action);
+        static void send_failure_text(AP_GPS::AP_GPS_Validator::FailureReason reason, uint8_t gps_instance_plus1);
+
+    private:
+        AP_Int8 is_enabled;
+        AP_Int8 action_on_failure;
+        AP_Int8 min_sat_count;
+        AP_Int16 max_horizontal_speed_mps;
+        AP_Int16 max_vertical_speed_mps;
+        AP_Int16 max_allowed_alt_m;
+        AP_Int16 min_allowed_alt_m;
+        AP_Int16 time_accuracy_ms;
+
+        bool is_gps_good{false};
+        AP_GPS::GPS_State last_state{};
+        uint32_t last_gps_time_ms{UINT32_MAX};
+        bool pending_good_valid{false};
+        uint32_t pending_good_since_ms{0};
+        const uint16_t CHANGE_STATE_DELAY_S{5};
+    };
+
 protected:
 
     // configuration parameters
@@ -801,53 +865,6 @@ private:
 
     // used for flight testing with GPS yaw loss
     bool _force_disable_gps_yaw;
-
-    class AP_GPS_Validator
-    {
-    public:
-        static const struct AP_Param::GroupInfo var_info[];
-
-        AP_GPS_Validator();
-
-        bool trust_gps(const AP_GPS::GPS_State& state);
-
-    private:
-        enum class Action : uint8_t {
-            FIRST                = 0,
-
-            DO_NOT_INFROM        = FIRST,
-            ONLY_INFORM          = 1,
-            DISABLE_GPS_USE      = 2,
-
-            LAST                 = DISABLE_GPS_USE,
-        };
-
-    private:
-        bool is_satellites_ok(const AP_GPS::GPS_State& state) const;
-        bool is_horizontal_speed_ok(const AP_GPS::GPS_State& state) const;
-        bool is_vertical_speed_ok(const AP_GPS::GPS_State& state) const;
-        bool is_altitude_ok(const AP_GPS::GPS_State& state) const;
-        bool is_time_ok(const AP_GPS::GPS_State& state, uint64_t gps_time_us) const;
-
-        Action get_gps_failure_action() const;
-        static bool should_inform(Action action);
-
-    private:
-        AP_Int8 is_enabled;
-        AP_Int8 action_on_failure;
-        AP_Int8 min_sat_count;
-        AP_Int16 max_horizontal_speed_mps;
-        AP_Int16 max_vertical_speed_mps;
-        AP_Int16 max_allowed_alt_m;
-        AP_Int16 min_allowed_alt_m;
-        AP_Int16 time_accuracy_ms;
-
-        bool is_gps_good = false;
-        AP_GPS::GPS_State last_state;
-        uint64_t last_gps_time_us;
-        uint64_t last_gps_state_change_us;
-        const uint16_t CHANGE_STATE_DELAY_S = 5;
-    };
 
     AP_GPS_Validator _gps_validator;
 

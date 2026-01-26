@@ -23,7 +23,6 @@
 
 #include <GCS_MAVLink/GCS.h>
 
-
 // table of user settable parameters
 const AP_Param::GroupInfo AP_GPS::AP_GPS_Validator::var_info[] = {
     // @Param: ENABLE
@@ -39,7 +38,7 @@ const AP_Param::GroupInfo AP_GPS::AP_GPS_Validator::var_info[] = {
     // @Description: Defines an action involved when GPS identified as a bad
     // @Values: 0:DoNotInform,1:OnlyInform,1:DisableGPSUse
     // @User: Advanced
-    AP_GROUPINFO("ACTION", 2, AP_GPS::AP_GPS_Validator, action_on_failure, static_cast<int8_t>(AP_GPS_Validator::Action::DO_NOT_INFROM)),
+    AP_GROUPINFO("ACTION", 2, AP_GPS::AP_GPS_Validator, action_on_failure, static_cast<int8_t>(AP_GPS_Validator::Action::ONLY_INFORM)),
 
     // @Param: SAT_N
     // @DisplayName: Minimum satellites number
@@ -85,97 +84,106 @@ const AP_Param::GroupInfo AP_GPS::AP_GPS_Validator::var_info[] = {
     AP_GROUPEND
 };
 
-AP_GPS::AP_GPS_Validator::AP_GPS_Validator() : last_state{},
-                                               last_gps_time_us(UINT64_MAX),
-                                               last_gps_state_change_us(0)
+AP_GPS::AP_GPS_Validator::AP_GPS_Validator()
 {
     AP_Param::setup_object_defaults(this, var_info);
 }
 
+void AP_GPS::AP_GPS_Validator::apply_enable_state(bool enabled) {
+    is_enabled.set_enable(enabled);
+}
+
+void AP_GPS::AP_GPS_Validator::change_action_on_failure(AP_GPS_Validator::Action action) {
+    action_on_failure.set(static_cast<int8_t>(action));
+}
+
+uint32_t AP_GPS::AP_GPS_Validator::now_ms() const {
+    return AP_HAL::millis();
+}
+
 bool AP_GPS::AP_GPS_Validator::trust_gps(const AP_GPS::GPS_State& state) {
-    // We validate only GPS that have 2D and higher fix. All other statuses are properly handled by ardupilot
-    if (!is_enabled || state.status < AP_GPS::GPS_OK_FIX_2D) {
+    if (!is_enabled) {
         return true;
     }
 
     const auto action = get_gps_failure_action();
+    const bool inform = should_inform(action);
 
-    const uint64_t gps_time_us = AP::gps().time_epoch_usec(state);
-    const uint64_t gps_state_change_diff_s = (gps_time_us - last_gps_state_change_us) * 1e-6;
+    const uint32_t now = now_ms();
 
-    const auto inform = should_inform(action);
+    // Evaluate current sample (first failure reason)
+    const FailureReason fail = first_failure_reason(state, now);
+    const bool candidate_good = (fail == FailureReason::NONE);
 
-    const bool was_gps_good = is_gps_good;
-
-    bool is_ok = is_satellites_ok(state);
-    if (!is_ok && was_gps_good && inform) {
-        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "GPS %d: not enough satellites", state.instance + 1);
-    }
-    is_gps_good = is_ok;
-
-    is_ok = is_horizontal_speed_ok(state);
-    if (!is_ok && was_gps_good && is_gps_good && inform) {
-        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "GPS %d: horizontal speed failure", state.instance + 1);
-    }
-    is_gps_good &= is_ok;
-
-    is_ok = is_vertical_speed_ok(state);
-    if (!is_ok && was_gps_good && is_gps_good && inform) {
-        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "GPS %d: vertical speed failure", state.instance + 1);
-    }
-    is_gps_good &= is_ok;
-
-    is_ok = is_altitude_ok(state);
-    if (!is_ok && was_gps_good && is_gps_good && inform) {
-        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "GPS %d: altitude failure", state.instance + 1);
-    }
-    is_gps_good &= is_ok;
-
-    is_ok = is_time_ok(state, gps_time_us);
-    if (!is_ok && was_gps_good && is_gps_good && inform) {
-        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "GPS %d: time accuracy failure", state.instance + 1);
-    }
-    is_gps_good &= is_ok;
-
+    // Update sample bookkeeping (used by speed/time checks next call)
     last_state = state;
-    last_gps_time_us = gps_time_us;
+    last_gps_time_ms = now;
 
-    if (is_gps_good && !was_gps_good && inform) {
-        GCS_SEND_TEXT(MAV_SEVERITY_INFO, "GPS %d is good for flight", state.instance + 1);
-    }
+    if (!candidate_good) {
+        // become bad immediately
+        if (is_gps_good) {
+            // State change true -> false: send exactly one message (first detected failure)
+            if (inform) {
+                send_failure_text(fail, state.instance + 1);
+            }
+            is_gps_good = false;
+        }
+        // Cancel any pending recovery timer
+        pending_good_valid = false;
 
-    const auto should_change_state = gps_state_change_diff_s > CHANGE_STATE_DELAY_S && is_gps_good;
-
-    if (should_change_state) {
-        last_gps_state_change_us = gps_time_us;
     } else {
-        is_gps_good = was_gps_good;
+        // candidate_good == true
+        if (!is_gps_good) {
+            // recover only after debounce
+            if (!pending_good_valid) {
+                pending_good_valid = true;
+                pending_good_since_ms = now;
+            }
+
+            const uint32_t elapsed_ms = now - pending_good_since_ms;
+            if (elapsed_ms >= (CHANGE_STATE_DELAY_S * 1000U)) {
+                // Commit false -> true
+                is_gps_good = true;
+                pending_good_valid = false;
+
+                // message only on state change
+                if (inform) {
+                    GCS_SEND_TEXT(MAV_SEVERITY_INFO, "GPS %d is good", state.instance + 1);
+                }
+            }
+        } else {
+            // Already good; nothing pending
+            pending_good_valid = false;
+        }
     }
 
-    return (action == Action::DISABLE_GPS_USE) ? is_gps_good : true;
+    // only ONLY_INFORM gates the return value
+    return (action != Action::ONLY_INFORM) ? is_gps_good : true;
 }
 
 bool AP_GPS::AP_GPS_Validator::is_satellites_ok(const AP_GPS::GPS_State& state) const {
     return state.num_sats >= min_sat_count.get();
 }
 
-bool AP_GPS::AP_GPS_Validator::is_horizontal_speed_ok(const AP_GPS::GPS_State& state) const {
-    const float time_diff_s = (state.last_gps_time_ms - last_state.last_gps_time_ms) * 0.001;
-    if (time_diff_s <= 0) {
-      return true;
+bool AP_GPS::AP_GPS_Validator::is_horizontal_speed_ok(const AP_GPS::GPS_State& state, uint32_t now_ms) const {
+    const int32_t dt_ms = int32_t(now_ms - last_gps_time_ms);
+    if (dt_ms <= 0) {
+        return false;
     }
 
-    const ftype horizontal_distance_m = state.location.get_distance(last_state.location);
+    const float time_diff_s = dt_ms * 0.001f;
 
-    const float horizontal_speed_mps = abs(horizontal_distance_m) / time_diff_s;
+    const auto horizontal_distance_m = static_cast<float>(state.location.get_distance(last_state.location));
+
+    const float horizontal_speed_mps = fabsf(horizontal_distance_m) / time_diff_s;
 
     return horizontal_speed_mps <= max_horizontal_speed_mps;
 }
 
-bool AP_GPS::AP_GPS_Validator::is_vertical_speed_ok(const AP_GPS::GPS_State& state) const {
-    const float time_diff_s = (state.last_gps_time_ms - last_state.last_gps_time_ms) * 0.001;
+bool AP_GPS::AP_GPS_Validator::is_vertical_speed_ok(const AP_GPS::GPS_State& state, uint32_t now_ms) const {
+    const float time_diff_s = (now_ms - last_gps_time_ms) * 0.001;
     if (time_diff_s <= 0) {
-      return true;
+      return false;
     }
 
     ftype altitude_diff_m = 0.0;
@@ -183,7 +191,7 @@ bool AP_GPS::AP_GPS_Validator::is_vertical_speed_ok(const AP_GPS::GPS_State& sta
       return false;
     }
 
-    const float vertical_speed_mps = abs(altitude_diff_m) / time_diff_s;
+    const float vertical_speed_mps = fabsf(static_cast<float>(altitude_diff_m)) / time_diff_s;
 
     return vertical_speed_mps <= max_vertical_speed_mps;
 }
@@ -194,21 +202,68 @@ bool AP_GPS::AP_GPS_Validator::is_altitude_ok(const AP_GPS::GPS_State& state) co
     return altitude_m >= min_allowed_alt_m.get() && altitude_m <= max_allowed_alt_m.get();
 }
 
-bool AP_GPS::AP_GPS_Validator::is_time_ok(const AP_GPS::GPS_State& state, uint64_t gps_time_us) const {
-    return (gps_time_us - last_gps_time_us) >= (time_accuracy_ms * 1e3);
+bool AP_GPS::AP_GPS_Validator::is_time_ok(const AP_GPS::GPS_State& state, uint32_t now_ms) const {
+    if (last_gps_time_ms == UINT32_MAX) {
+        return false; // no prior sample
+    }
+    const uint32_t dt_ms = now_ms - last_gps_time_ms;
+    return dt_ms >= static_cast<uint32_t>(time_accuracy_ms.get());
 }
 
 AP_GPS::AP_GPS_Validator::Action AP_GPS::AP_GPS_Validator::get_gps_failure_action() const {
     const auto action = action_on_failure.get();
     if (action > static_cast<int8_t>(Action::LAST) || action < static_cast<int8_t>(Action::FIRST)) {
-        return Action::DO_NOT_INFROM;
+        return Action::FIRST;
     }
     return static_cast<Action>(action);
 }
 
-bool AP_GPS::AP_GPS_Validator::should_inform(Action action) {
-    return action != Action::DO_NOT_INFROM;
+AP_GPS::AP_GPS_Validator::FailureReason AP_GPS::AP_GPS_Validator::first_failure_reason(const AP_GPS::GPS_State& state, uint32_t now_ms) const
+{
+    if (!is_satellites_ok(state)) {
+        return FailureReason::SATS;
+    }
+    if (!is_horizontal_speed_ok(state, now_ms)) {
+        return FailureReason::HSPEED;
+    }
+    if (!is_vertical_speed_ok(state, now_ms)) {
+        return FailureReason::VSPEED;
+    }
+    if (!is_altitude_ok(state)) {
+        return FailureReason::ALT;
+    }
+    if (!is_time_ok(state, now_ms)) {
+        return FailureReason::TIME;
+    }
+    return FailureReason::NONE;
 }
 
+void AP_GPS::AP_GPS_Validator::send_failure_text(AP_GPS::AP_GPS_Validator::FailureReason reason, uint8_t gps_instance_plus1)
+{
+    switch (reason) {
+    case AP_GPS::AP_GPS_Validator::FailureReason::SATS:
+        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "GPS %d: bad sats", gps_instance_plus1);
+        break;
+    case AP_GPS::AP_GPS_Validator::FailureReason::HSPEED:
+        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "GPS %d: bad hspeed", gps_instance_plus1);
+        break;
+    case AP_GPS::AP_GPS_Validator::FailureReason::VSPEED:
+        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "GPS %d: bad vspeed", gps_instance_plus1);
+        break;
+    case AP_GPS::AP_GPS_Validator::FailureReason::ALT:
+        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "GPS %d: bad alt", gps_instance_plus1);
+        break;
+    case AP_GPS::AP_GPS_Validator::FailureReason::TIME:
+        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "GPS %d: bad time", gps_instance_plus1);
+        break;
+    case AP_GPS::AP_GPS_Validator::FailureReason::NONE:
+    default:
+        break;
+    }
+}
+
+bool AP_GPS::AP_GPS_Validator::should_inform(Action action) {
+    return action != Action::ONLY_DISABLE_GPS_USE;
+}
 
 #endif  // AP_GPS_ENABLED
