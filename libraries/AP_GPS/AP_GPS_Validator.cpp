@@ -36,7 +36,7 @@ const AP_Param::GroupInfo AP_GPS::AP_GPS_Validator::var_info[] = {
     // @Param: ACTION
     // @DisplayName: Action on GPS validation failure
     // @Description: Defines an action involved when GPS identified as a bad
-    // @Values: 0:DoNotInform,1:OnlyInform,1:DisableGPSUse
+    // @Values: 0:OnlyInform,1:OnlyDisableGPSUse,1:InformAndDisableGPSUse
     // @User: Advanced
     AP_GROUPINFO("ACTION", 2, AP_GPS::AP_GPS_Validator, action_on_failure, static_cast<int8_t>(AP_GPS_Validator::Action::ONLY_INFORM)),
 
@@ -74,12 +74,19 @@ const AP_Param::GroupInfo AP_GPS::AP_GPS_Validator::var_info[] = {
     // @User: Advanced
     AP_GROUPINFO("ALT_MIN", 7, AP_GPS::AP_GPS_Validator, min_allowed_alt_m, -10),
 
-    // @Param: TIME_ACR
+    // @Param: TIME_A
     // @DisplayName: Time accuracy
     // @Description: Defines time accuracy in miliseconds to consider GPS as a good
     // @Units: ms
     // @User: Advanced
     AP_GROUPINFO("TIME_A", 8, AP_GPS::AP_GPS_Validator, time_accuracy_ms, 10),
+
+    // @Param: INST
+    // @DisplayName: GPS instance to validate
+    // @Description: Defines a GPS instance to run the gps validation on
+    // @Values: 0:First,1:Second,1:Primary
+    // @User: Advanced
+    AP_GROUPINFO("INST", 9, AP_GPS::AP_GPS_Validator, gps_instance_to_validate, static_cast<int8_t>(AP_GPS_Validator::GpsInstance::FIRST)),
 
     AP_GROUPEND
 };
@@ -103,6 +110,12 @@ uint32_t AP_GPS::AP_GPS_Validator::now_ms() const {
 
 bool AP_GPS::AP_GPS_Validator::trust_gps(const AP_GPS::GPS_State& state) {
     if (!is_enabled) {
+        return true;
+    }
+
+    const auto desired_instance = gps_instance_to_validate.get();
+
+    if (state.instance != desired_instance && desired_instance != static_cast<int8_t>(GpsInstance::PRIMARY)) {
         return true;
     }
 
@@ -148,7 +161,7 @@ bool AP_GPS::AP_GPS_Validator::trust_gps(const AP_GPS::GPS_State& state) {
 
                 // message only on state change
                 if (inform) {
-                    GCS_SEND_TEXT(MAV_SEVERITY_INFO, "GPS %d is good", state.instance + 1);
+                    GCS_SEND_TEXT(MAV_SEVERITY_INFO, "GPS %d: good", state.instance + 1);
                 }
             }
         } else {
@@ -166,9 +179,9 @@ bool AP_GPS::AP_GPS_Validator::is_satellites_ok(const AP_GPS::GPS_State& state) 
 }
 
 bool AP_GPS::AP_GPS_Validator::is_horizontal_speed_ok(const AP_GPS::GPS_State& state, uint32_t now_ms) const {
-    const int32_t dt_ms = int32_t(now_ms - last_gps_time_ms);
+    const int32_t dt_ms = int32_t(state.last_gps_time_ms - last_state.last_gps_time_ms);
     if (dt_ms <= 0) {
-        return false;
+        return true;
     }
 
     const float time_diff_s = dt_ms * 0.001f;
@@ -181,14 +194,14 @@ bool AP_GPS::AP_GPS_Validator::is_horizontal_speed_ok(const AP_GPS::GPS_State& s
 }
 
 bool AP_GPS::AP_GPS_Validator::is_vertical_speed_ok(const AP_GPS::GPS_State& state, uint32_t now_ms) const {
-    const float time_diff_s = (now_ms - last_gps_time_ms) * 0.001;
+    const float time_diff_s = (state.last_gps_time_ms - last_state.last_gps_time_ms) * 0.001f;
     if (time_diff_s <= 0) {
-      return false;
+        return true;
     }
 
     ftype altitude_diff_m = 0.0;
     if (!state.location.get_alt_distance(last_state.location, altitude_diff_m)) {
-      return false;
+        return false;
     }
 
     const float vertical_speed_mps = fabsf(static_cast<float>(altitude_diff_m)) / time_diff_s;
@@ -223,6 +236,9 @@ AP_GPS::AP_GPS_Validator::FailureReason AP_GPS::AP_GPS_Validator::first_failure_
     if (!is_satellites_ok(state)) {
         return FailureReason::SATS;
     }
+    if (!is_time_ok(state, now_ms)) {
+        return FailureReason::TIME;
+    }
     if (!is_horizontal_speed_ok(state, now_ms)) {
         return FailureReason::HSPEED;
     }
@@ -231,9 +247,6 @@ AP_GPS::AP_GPS_Validator::FailureReason AP_GPS::AP_GPS_Validator::first_failure_
     }
     if (!is_altitude_ok(state)) {
         return FailureReason::ALT;
-    }
-    if (!is_time_ok(state, now_ms)) {
-        return FailureReason::TIME;
     }
     return FailureReason::NONE;
 }

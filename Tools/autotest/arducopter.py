@@ -9607,6 +9607,68 @@ class AutoTestCopter(vehicle_test_suite.TestSuite):
             self.context_pop()
         self.reboot_sitl()
 
+    def GPSValidator(self):
+        '''Check GPS validation functionality'''
+        self.progress("enable GPS validator")
+        self.context_collect('STATUSTEXT')
+        self.set_parameters({
+            'FS_EKF_ACTION': 2,
+            'GPS_VLD_ENABLE': 1,
+            "GPS_VLD_ACTION": 2,
+            "AUTO_OPTIONS": 3,
+            "ANGLE_MAX": 4500,
+            "WPNAV_SPEED_UP": 1000,  # cm/s
+        })
+
+        self.upload_simple_relhome_mission([
+            #                                      N   E  U
+            (mavutil.mavlink.MAV_CMD_NAV_TAKEOFF,   0, 0, 10),
+            (mavutil.mavlink.MAV_CMD_NAV_TAKEOFF,   0, 0, 50),
+            (mavutil.mavlink.MAV_CMD_NAV_WAYPOINT, 300, 300, 50), # hspeed
+            (mavutil.mavlink.MAV_CMD_NAV_WAYPOINT, 600, 600, 50), # sats
+            (mavutil.mavlink.MAV_CMD_NAV_WAYPOINT, 1200, 1200, 50), # alt min
+            (mavutil.mavlink.MAV_CMD_NAV_WAYPOINT, 1300, 1300, 50), # alt max
+            (mavutil.mavlink.MAV_CMD_NAV_WAYPOINT, 1300, 1300, 500), # vspeed
+        ])
+
+        self.progress("waiting copter readiness")
+        self.wait_ekf_happy()
+        self.wait_ready_to_arm()
+        self.arm_vehicle()
+        self.progress("takeoff in loiter to 10m")
+        self.takeoff(mode='LOITER', alt_min=10)
+
+
+        def run_test_suite(parameter, waypoint, message_to_check, wait_timeout):
+            self.change_mode('AUTO')
+            self.wait_current_waypoint(wpnum=waypoint, timeout=500)
+            param_name = parameter[0]
+            desired_value = parameter[1]
+            default_value = parameter[2]
+            self.set_parameter(param_name, desired_value)
+            statustext_full = self.wait_statustext(message_to_check, check_context=True, timeout=wait_timeout)
+            self.progress(statustext_full)
+            self.wait_mode("ALT_HOLD")
+            self.set_parameter(param_name, default_value)
+            self.wait_statustext('GPS 1: good', check_context=True, timeout=60)
+            self.wait_ekf_happy()
+            self.wait_statustext("EKF Failsafe Cleared", timeout=60)
+            self.context_clear_collection('STATUSTEXT')
+
+
+        run_test_suite(('GPS_VLD_V_H_MAX', 5, 30), 2, 'GPS 1: bad hspeed', 60)
+
+        run_test_suite(('GPS_VLD_SAT_N', 60, 6), 3, 'GPS 1: bad sats', 60)
+
+        run_test_suite(('GPS_VLD_ALT_MIN', 2000, -10), 4, 'GPS 1: bad alt', 60)
+
+        run_test_suite(('GPS_VLD_ALT_MAX', 100, 2000), 5, 'GPS 1: bad alt', 60)
+
+        run_test_suite(('GPS_VLD_V_V_MAX', 2, 15), 6, 'GPS 1: bad vspeed', 60)
+
+        self.change_mode('LAND')
+        self.wait_disarmed()
+
     def PositionWhenGPSIsZero(self):
         '''Ensure position doesn't zero when GPS lost'''
         # https://github.com/ArduPilot/ardupilot/issues/14236
@@ -12306,6 +12368,7 @@ RTL_ALT 111
             self.PIDNotches,
             self.StaticNotches,
             self.RefindGPS,
+            self.GPSValidator,
             Test(self.GyroFFT, attempts=1, speedup=8),
             Test(self.GyroFFTHarmonic, attempts=4, speedup=8),
             Test(self.GyroFFTAverage, attempts=1, speedup=8),
