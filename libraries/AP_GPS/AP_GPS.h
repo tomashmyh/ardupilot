@@ -627,6 +627,16 @@ public:
             LAST                       = INFORM_AND_DISABLE_GPS_USE,
         };
 
+        enum class GpsInstance : uint8_t {
+            BEGIN                      = 0,
+
+            FIRST                      = BEGIN,
+            SECOND                     = 1,
+            PRIMARY                    = 2,
+
+            END                        = PRIMARY,
+        };
+
         AP_GPS_Validator();
 
         bool trust_gps(const AP_GPS::GPS_State& state);
@@ -661,6 +671,7 @@ public:
     private:
         AP_Int8 is_enabled;
         AP_Int8 action_on_failure;
+        AP_Int8 gps_instance_to_validate;
         AP_Int8 min_sat_count;
         AP_Int16 max_horizontal_speed_mps;
         AP_Int16 max_vertical_speed_mps;
