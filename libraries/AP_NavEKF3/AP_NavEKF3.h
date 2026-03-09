@@ -497,6 +497,7 @@ private:
     const float maxYawEstVelInnov = 2.0f;          // Maximum acceptable length of the velocity innovation returned by the EKF-GSF yaw estimator (m/s)
     const uint16_t deadReckonDeclare_ms = 1000;    // Time without equivalent position or velocity observation to constrain drift before dead reckoning is declared (msec)
     const uint16_t gpsNoFixTimeout_ms = 2000;      // Time without a fix required to reset GPS alignment checks when EK3_OPTIONS bit 0 is set (msec)
+    const float maxGpsHorizPosNoise = 100.0f;      // Maximum GPS horizontal position noise
 
     // time at start of current filter update
     uint64_t imuSampleTime_us;
