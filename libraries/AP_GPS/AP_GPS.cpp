@@ -1142,8 +1142,10 @@ void AP_GPS::update_primary(void)
         primary_param = 0;
     }
 
-    if (!_gps_validator.trust_gps(state[primary_param])) {
-        state[primary_param].status = NO_FIX;
+    const int8_t instance_to_validate = _gps_validator.get_instance_number(primary_param);
+
+    if (!_gps_validator.trust_gps(state[instance_to_validate])) {
+        state[instance_to_validate].status = NO_FIX;
     }
 
     if ((GPSAutoSwitch)_auto_switch.get() == GPSAutoSwitch::NONE) {

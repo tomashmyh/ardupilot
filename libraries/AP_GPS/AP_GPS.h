@@ -639,6 +639,7 @@ public:
 
         AP_GPS_Validator();
 
+        int8_t get_instance_number(int8_t primary_instance) const;
         bool trust_gps(const AP_GPS::GPS_State& state);
         void apply_enable_state(bool enabled);
         void change_action_on_failure(AP_GPS_Validator::Action action);

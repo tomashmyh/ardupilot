@@ -36,7 +36,7 @@ const AP_Param::GroupInfo AP_GPS::AP_GPS_Validator::var_info[] = {
     // @Param: ACTION
     // @DisplayName: Action on GPS validation failure
     // @Description: Defines an action involved when GPS identified as a bad
-    // @Values: 0:OnlyInform,1:OnlyDisableGPSUse,1:InformAndDisableGPSUse
+    // @Values: 0:OnlyInform,1:OnlyDisableGPSUse,2:InformAndDisableGPSUse
     // @User: Advanced
     AP_GROUPINFO("ACTION", 2, AP_GPS::AP_GPS_Validator, action_on_failure, static_cast<int8_t>(AP_GPS_Validator::Action::INFORM_AND_DISABLE_GPS_USE)),
 
@@ -84,7 +84,7 @@ const AP_Param::GroupInfo AP_GPS::AP_GPS_Validator::var_info[] = {
     // @Param: INST
     // @DisplayName: GPS instance to validate
     // @Description: Defines a GPS instance to run the gps validation on
-    // @Values: 0:First,1:Second,1:Primary
+    // @Values: 0:First,1:Second,2:Primary
     // @User: Advanced
     AP_GROUPINFO("INST", 9, AP_GPS::AP_GPS_Validator, gps_instance_to_validate, static_cast<int8_t>(AP_GPS_Validator::GpsInstance::FIRST)),
 
@@ -106,6 +106,18 @@ void AP_GPS::AP_GPS_Validator::change_action_on_failure(AP_GPS_Validator::Action
 
 uint32_t AP_GPS::AP_GPS_Validator::now_ms() const {
     return AP_HAL::millis();
+}
+
+int8_t AP_GPS::AP_GPS_Validator::get_instance_number(int8_t primary_instance) const {
+    const auto desired_instance = gps_instance_to_validate.get();
+    if (desired_instance == static_cast<int8_t>(GpsInstance::PRIMARY)) {
+        return primary_instance;
+    }
+    if ((desired_instance < 0) || (desired_instance >= GPS_MAX_RECEIVERS)) {
+        return 0;
+    }
+
+    return desired_instance;
 }
 
 bool AP_GPS::AP_GPS_Validator::trust_gps(const AP_GPS::GPS_State& state) {
