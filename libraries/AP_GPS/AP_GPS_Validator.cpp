@@ -31,14 +31,14 @@ const AP_Param::GroupInfo AP_GPS::AP_GPS_Validator::var_info[] = {
     // @Values: 0:No,1:Yes
     // @RebootRequired: True
     // @User: Advanced
-    AP_GROUPINFO_FLAGS("ENABLE", 1, AP_GPS::AP_GPS_Validator, is_enabled, 0, AP_PARAM_FLAG_ENABLE),
+    AP_GROUPINFO_FLAGS("ENABLE", 1, AP_GPS::AP_GPS_Validator, is_enabled, 1, AP_PARAM_FLAG_ENABLE),
 
     // @Param: ACTION
     // @DisplayName: Action on GPS validation failure
     // @Description: Defines an action involved when GPS identified as a bad
     // @Values: 0:OnlyInform,1:OnlyDisableGPSUse,1:InformAndDisableGPSUse
     // @User: Advanced
-    AP_GROUPINFO("ACTION", 2, AP_GPS::AP_GPS_Validator, action_on_failure, static_cast<int8_t>(AP_GPS_Validator::Action::ONLY_INFORM)),
+    AP_GROUPINFO("ACTION", 2, AP_GPS::AP_GPS_Validator, action_on_failure, static_cast<int8_t>(AP_GPS_Validator::Action::INFORM_AND_DISABLE_GPS_USE)),
 
     // @Param: SAT_N
     // @DisplayName: Minimum satellites number
