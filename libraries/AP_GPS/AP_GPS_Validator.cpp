@@ -81,12 +81,40 @@ const AP_Param::GroupInfo AP_GPS::AP_GPS_Validator::var_info[] = {
     // @User: Advanced
     AP_GROUPINFO("TIME_A", 8, AP_GPS::AP_GPS_Validator, time_accuracy_ms, 10),
 
+    // @Param: LAT_MIN
+    // @DisplayName: Min valid latitude
+    // @Description: Defines a minimum valid latitude region
+    // @Units: degree
+    // @User: Advanced
+    AP_GROUPINFO("LAT_MIN", 9, AP_GPS::AP_GPS_Validator, min_valid_lat, 45.0f),
+
+    // @Param: LON_MIN
+    // @DisplayName: Min valid longitude
+    // @Description: Defines a minimum valid longitude region
+    // @Units: degree
+    // @User: Advanced
+    AP_GROUPINFO("LON_MIN", 10, AP_GPS::AP_GPS_Validator, min_valid_lon, 27.0f),
+
+    // @Param: LAT_MAX
+    // @DisplayName: Max valid latitude
+    // @Description: Defines a maximum valid latitude region
+    // @Units: degree
+    // @User: Advanced
+    AP_GROUPINFO("LAT_MAX", 11, AP_GPS::AP_GPS_Validator, max_valid_lat, 53.0f),
+
+    // @Param: LON_MAX
+    // @DisplayName: Max valid longitude
+    // @Description: Defines a maximum valid longitude region
+    // @Units: degree
+    // @User: Advanced
+    AP_GROUPINFO("LON_MAX", 12, AP_GPS::AP_GPS_Validator, max_valid_lon, 45.0f),
+
     // @Param: INST
     // @DisplayName: GPS instance to validate
     // @Description: Defines a GPS instance to run the gps validation on
     // @Values: 0:First,1:Second,2:Primary
     // @User: Advanced
-    AP_GROUPINFO("INST", 9, AP_GPS::AP_GPS_Validator, gps_instance_to_validate, static_cast<int8_t>(AP_GPS_Validator::GpsInstance::FIRST)),
+    AP_GROUPINFO("INST", 13, AP_GPS::AP_GPS_Validator, gps_instance_to_validate, static_cast<int8_t>(AP_GPS_Validator::GpsInstance::FIRST)),
 
     AP_GROUPEND
 };
@@ -227,6 +255,15 @@ bool AP_GPS::AP_GPS_Validator::is_altitude_ok(const AP_GPS::GPS_State& state) co
     return altitude_m >= min_allowed_alt_m.get() && altitude_m <= max_allowed_alt_m.get();
 }
 
+bool AP_GPS::AP_GPS_Validator::is_position_ok(const AP_GPS::GPS_State& state) const {
+    const float lat = state.location.lat * 1e-7;
+    const float lon = state.location.lng * 1e-7;
+    const bool is_lat_ok = lat > min_valid_lat && lat < max_valid_lat;
+    const bool is_lon_ok = lon > min_valid_lon && lon < max_valid_lon;
+
+    return is_lat_ok && is_lon_ok;
+}
+
 bool AP_GPS::AP_GPS_Validator::is_time_ok(const AP_GPS::GPS_State& state, uint32_t now_ms) const {
     if (last_gps_time_ms == UINT32_MAX) {
         return false; // no prior sample
@@ -260,6 +297,9 @@ AP_GPS::AP_GPS_Validator::FailureReason AP_GPS::AP_GPS_Validator::first_failure_
     if (!is_altitude_ok(state)) {
         return FailureReason::ALT;
     }
+    if (!is_position_ok(state)) {
+        return FailureReason::POS;
+    }
     return FailureReason::NONE;
 }
 
@@ -280,6 +320,9 @@ void AP_GPS::AP_GPS_Validator::send_failure_text(AP_GPS::AP_GPS_Validator::Failu
         break;
     case AP_GPS::AP_GPS_Validator::FailureReason::TIME:
         GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "GPS %d: bad time", gps_instance_plus1);
+        break;
+    case AP_GPS::AP_GPS_Validator::FailureReason::POS:
+        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "GPS %d: bad pos", gps_instance_plus1);
         break;
     case AP_GPS::AP_GPS_Validator::FailureReason::NONE:
     default:
