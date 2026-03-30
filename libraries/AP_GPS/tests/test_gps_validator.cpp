@@ -79,15 +79,15 @@ static void establish_good_committed(TestGPSValidator& validator, uint32_t t0_ms
     ASSERT_TRUE(feed_good(validator, t0_ms + 10 + 5000, t0_ms + 10 + 5000));
 }
 
-TEST(AP_GPS_Validator, Disabled_AlwaysTrue)
+TEST(AP_GPS_Validator, Disabled_AlwaysFalse)
 {
     TestGPSValidator validator{};
-    // disabled by default per param; do not enable
+    // enabled by default per param
     validator.change_action_on_failure(AP_GPS::AP_GPS_Validator::Action::ONLY_DISABLE_GPS_USE);
 
     validator.set_now_ms(0);
     auto bad = make_state(0, 0, 50.4501, 30.5234, 3000.0f, 0); // multiple failures
-    ASSERT_TRUE(validator.trust_gps(bad));
+    ASSERT_FALSE(validator.trust_gps(bad));
 }
 
 TEST(AP_GPS_Validator, Startup_DebounceToTrue)

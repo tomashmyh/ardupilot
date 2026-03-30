@@ -9630,6 +9630,10 @@ class AutoTestCopter(vehicle_test_suite.TestSuite):
             "WPNAV_SPEED_UP": 1000,  # cm/s
         })
 
+        self.progress("waiting copter readiness")
+        self.wait_ekf_happy()
+        self.wait_ready_to_arm()
+
         self.upload_simple_relhome_mission([
             #                                      N   E  U
             (mavutil.mavlink.MAV_CMD_NAV_TAKEOFF,   0, 0, 10),
@@ -9639,11 +9643,9 @@ class AutoTestCopter(vehicle_test_suite.TestSuite):
             (mavutil.mavlink.MAV_CMD_NAV_WAYPOINT, 1200, 1200, 50), # alt min
             (mavutil.mavlink.MAV_CMD_NAV_WAYPOINT, 1300, 1300, 50), # alt max
             (mavutil.mavlink.MAV_CMD_NAV_WAYPOINT, 1300, 1300, 500), # vspeed
+            (mavutil.mavlink.MAV_CMD_NAV_WAYPOINT, 1500, 1400, 500), # region
         ])
 
-        self.progress("waiting copter readiness")
-        self.wait_ekf_happy()
-        self.wait_ready_to_arm()
         self.arm_vehicle()
         self.progress("takeoff in loiter to 10m")
         self.takeoff(mode='LOITER', alt_min=10)
@@ -9675,6 +9677,8 @@ class AutoTestCopter(vehicle_test_suite.TestSuite):
         run_test_suite(('GPS_VLD_ALT_MAX', 100, 2000), 5, 'GPS 1: bad alt', 60)
 
         run_test_suite(('GPS_VLD_V_V_MAX', 2, 15), 6, 'GPS 1: bad vspeed', 60)
+
+        run_test_suite(('GPS_VLD_LAT_MIN', -45.0, 45.0), 7, 'GPS 1: bad pos', 60)
 
         self.change_mode('LAND')
         self.wait_disarmed()
