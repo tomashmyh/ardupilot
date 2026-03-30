@@ -655,6 +655,7 @@ public:
             VSPEED,
             ALT,
             TIME,
+            POS,
         };
 
     private:
@@ -662,6 +663,7 @@ public:
         bool is_horizontal_speed_ok(const AP_GPS::GPS_State& state, uint32_t now_ms) const;
         bool is_vertical_speed_ok(const AP_GPS::GPS_State& state, uint32_t now_ms) const;
         bool is_altitude_ok(const AP_GPS::GPS_State& state) const;
+        bool is_position_ok(const AP_GPS::GPS_State& state) const;
         bool is_time_ok(const AP_GPS::GPS_State& state, uint32_t gps_time_ms) const;
         FailureReason first_failure_reason(const AP_GPS::GPS_State& state, uint32_t now_ms) const;
 
@@ -679,6 +681,10 @@ public:
         AP_Int16 max_allowed_alt_m;
         AP_Int16 min_allowed_alt_m;
         AP_Int16 time_accuracy_ms;
+        AP_Float min_valid_lat;
+        AP_Float min_valid_lon;
+        AP_Float max_valid_lat;
+        AP_Float max_valid_lon;
 
         bool is_gps_good{false};
         AP_GPS::GPS_State last_state{};
