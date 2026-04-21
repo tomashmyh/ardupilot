@@ -289,7 +289,7 @@ const AP_Param::GroupInfo AP_GPS::var_info[] = {
     // @Description: Used only by companion computers to control GPS sync
     // @Values: 0:No,1:Yes
     // @User: Advanced
-    AP_GROUPINFO("_VISNAV_SYNC", 35, AP_GPS, _is_visnav_sync_enabled, 0),
+    AP_GROUPINFO("_VISNAV_SYNC", 35, AP_GPS, _is_visnav_sync_enabled, 1),
 
     AP_GROUPEND
 };
