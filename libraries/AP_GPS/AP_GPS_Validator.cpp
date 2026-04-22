@@ -74,12 +74,12 @@ const AP_Param::GroupInfo AP_GPS::AP_GPS_Validator::var_info[] = {
     // @User: Advanced
     AP_GROUPINFO("ALT_MIN", 7, AP_GPS::AP_GPS_Validator, min_allowed_alt_m, -10),
 
-    // @Param: TIME_A
-    // @DisplayName: Time accuracy
-    // @Description: Defines time accuracy in miliseconds to consider GPS as a good
+    // @Param: MIN_DT_MS
+    // @DisplayName: Minimum GPS update interval
+    // @Description: Minimum wall-clock time in milliseconds that must elapse between consecutive GPS samples. Samples arriving faster than this are rejected as invalid.
     // @Units: ms
     // @User: Advanced
-    AP_GROUPINFO("TIME_A", 8, AP_GPS::AP_GPS_Validator, time_accuracy_ms, 10),
+    AP_GROUPINFO("MIN_DT", 8, AP_GPS::AP_GPS_Validator, min_dt_ms, 10),
 
     // @Param: LAT_MIN
     // @DisplayName: Min valid latitude
@@ -115,6 +115,47 @@ const AP_Param::GroupInfo AP_GPS::AP_GPS_Validator::var_info[] = {
     // @Values: 0:First,1:Second,2:Primary
     // @User: Advanced
     AP_GROUPINFO("INST", 13, AP_GPS::AP_GPS_Validator, gps_instance_to_validate, static_cast<int8_t>(AP_GPS_Validator::GpsInstance::FIRST)),
+
+    // @Param: TIME_TOL
+    // @DisplayName: GPS time regression tolerance
+    // @Description: Maximum allowed backwards step in GPS time-of-week (time_week_ms) between consecutive accepted samples, in milliseconds. Zero means strictly monotonic. Increase to 500-1000 for ublox receivers, which can produce small iTOW regressions during clock correction or re-acquisition. Does not affect the GPS week number check, which is always strict.
+    // @Units: ms
+    // @User: Advanced
+    AP_GROUPINFO("TIME_T", 14, AP_GPS::AP_GPS_Validator, gps_time_tolerance_ms, 500),
+
+    // @Param: H_ACC_MAX
+    // @DisplayName: Maximum horizontal accuracy
+    // @Description: Maximum allowed horizontal position accuracy in meters. Samples with reported accuracy worse than this threshold are rejected. Set 0 to disable. Requires the GPS driver to report horizontal accuracy (have_horizontal_accuracy).
+    // @Units: m
+    // @User: Advanced
+    AP_GROUPINFO("H_A_MAX", 15, AP_GPS::AP_GPS_Validator, max_h_accuracy_m, 5.0f),
+
+    // @Param: V_ACC_MAX
+    // @DisplayName: Maximum vertical accuracy
+    // @Description: Maximum allowed vertical position accuracy in meters. Samples with reported accuracy worse than this threshold are rejected. Set 0 to disable. Requires the GPS driver to report vertical accuracy (have_vertical_accuracy).
+    // @Units: m
+    // @User: Advanced
+    AP_GROUPINFO("V_A_MAX", 16, AP_GPS::AP_GPS_Validator, max_v_accuracy_m, 8.0f),
+
+    // @Param: UND_MIN
+    // @DisplayName: Minimum geoid undulation
+    // @Description: Minimum allowed WGS84 geoid undulation (ellipsoid height minus MSL height) in meters. Samples outside this range are rejected. Requires the GPS driver to report undulation (have_undulation). Global range is approximately -120m to +90m.
+    // @Units: m
+    // @User: Advanced
+    AP_GROUPINFO("UND_MIN", 17, AP_GPS::AP_GPS_Validator, min_undulation_m, -120.0f),
+
+    // @Param: UND_MAX
+    // @DisplayName: Maximum geoid undulation
+    // @Description: Maximum allowed WGS84 geoid undulation (ellipsoid height minus MSL height) in meters. Samples outside this range are rejected. Requires the GPS driver to report undulation (have_undulation). Global range is approximately -120m to +90m.
+    // @Units: m
+    // @User: Advanced
+    AP_GROUPINFO("UND_MAX", 18, AP_GPS::AP_GPS_Validator, max_undulation_m, 100.0f),
+
+    // @Param: SAT_JUMP
+    // @DisplayName: Maximum satellite count jump
+    // @Description: Maximum allowed single-step increase in reported satellite count while already tracking. A real receiver acquires satellites gradually; a sudden large upward jump (e.g. 6 to 20) indicates a spoofing attack injecting many fake signals simultaneously. Only upward jumps are checked - drops are normal signal loss already covered by SAT_N. Set 0 to disable.
+    // @User: Advanced
+    AP_GROUPINFO("SAT_JMP", 19, AP_GPS::AP_GPS_Validator, max_sat_jump, 10),
 
     AP_GROUPEND
 };
@@ -168,10 +209,6 @@ bool AP_GPS::AP_GPS_Validator::trust_gps(const AP_GPS::GPS_State& state) {
     const FailureReason fail = first_failure_reason(state, now);
     const bool candidate_good = (fail == FailureReason::NONE);
 
-    // Update sample bookkeeping (used by speed/time checks next call)
-    last_state = state;
-    last_gps_time_ms = now;
-
     if (!candidate_good) {
         // become bad immediately
         if (is_gps_good) {
@@ -186,8 +223,17 @@ bool AP_GPS::AP_GPS_Validator::trust_gps(const AP_GPS::GPS_State& state) {
 
     } else {
         // candidate_good == true
-        if (!is_gps_good) {
-            // recover only after debounce
+
+        if (is_gps_good) {
+            // Already trusted: advance the baseline with each accepted sample so
+            // speed checks track the vehicle's real position incrementally.
+            last_state = state;
+            last_state_valid = true;
+            pending_good_valid = false;
+
+        } else {
+            // Recovering (debounce in progress): keep the baseline frozen at the
+            // last pre-outage accepted position.
             if (!pending_good_valid) {
                 pending_good_valid = true;
                 pending_good_since_ms = now;
@@ -195,20 +241,23 @@ bool AP_GPS::AP_GPS_Validator::trust_gps(const AP_GPS::GPS_State& state) {
 
             const uint32_t elapsed_ms = now - pending_good_since_ms;
             if (elapsed_ms >= (CHANGE_STATE_DELAY_S * 1000U)) {
-                // Commit false -> true
+                // Debounce complete: anchor baseline to the sample that commits.
+                last_state = state;
+                last_state_valid = true;
                 is_gps_good = true;
                 pending_good_valid = false;
 
-                // message only on state change
                 if (inform) {
                     GCS_SEND_TEXT(MAV_SEVERITY_INFO, "GPS %d: good", state.instance + 1);
                 }
             }
-        } else {
-            // Already good; nothing pending
-            pending_good_valid = false;
         }
     }
+
+    // Always advance the wall-clock stamp so the TIME gate can bootstrap and
+    // correctly measure update rate on the next call, regardless of whether
+    // this sample was accepted.
+    last_gps_time_ms = now;
 
     // only ONLY_INFORM gates the return value
     return (action != Action::ONLY_INFORM) ? is_gps_good : true;
@@ -218,7 +267,26 @@ bool AP_GPS::AP_GPS_Validator::is_satellites_ok(const AP_GPS::GPS_State& state) 
     return state.num_sats >= min_sat_count.get();
 }
 
+bool AP_GPS::AP_GPS_Validator::is_sat_count_ok(const AP_GPS::GPS_State& state) const {
+    if (!last_state_valid) {
+        return true;  // no baseline yet, skip check
+    }
+    const int8_t limit = max_sat_jump.get();
+    if (limit <= 0) {
+        return true;  // disabled
+    }
+    // Only upward jumps are suspicious: a spoofing attack typically injects many
+    // satellites simultaneously. A downward change is normal signal loss and is
+    // already covered by the minimum satellite count check.
+    const int16_t delta = static_cast<int16_t>(state.num_sats) -
+                          static_cast<int16_t>(last_state.num_sats);
+    return delta <= static_cast<int16_t>(limit);
+}
+
 bool AP_GPS::AP_GPS_Validator::is_horizontal_speed_ok(const AP_GPS::GPS_State& state, uint32_t now_ms) const {
+    if (!last_state_valid) {
+        return true;  // no baseline yet, skip check
+    }
     const int32_t dt_ms = int32_t(state.last_gps_time_ms - last_state.last_gps_time_ms);
     if (dt_ms <= 0) {
         return true;
@@ -234,6 +302,9 @@ bool AP_GPS::AP_GPS_Validator::is_horizontal_speed_ok(const AP_GPS::GPS_State& s
 }
 
 bool AP_GPS::AP_GPS_Validator::is_vertical_speed_ok(const AP_GPS::GPS_State& state, uint32_t now_ms) const {
+    if (!last_state_valid) {
+        return true;  // no baseline yet, skip check
+    }
     const float time_diff_s = (state.last_gps_time_ms - last_state.last_gps_time_ms) * 0.001f;
     if (time_diff_s <= 0) {
         return true;
@@ -250,7 +321,7 @@ bool AP_GPS::AP_GPS_Validator::is_vertical_speed_ok(const AP_GPS::GPS_State& sta
 }
 
 bool AP_GPS::AP_GPS_Validator::is_altitude_ok(const AP_GPS::GPS_State& state) const {
-    const float altitude_m = state.location.alt * 0.01;
+    const float altitude_m = state.location.alt * 0.01f;
 
     return altitude_m >= min_allowed_alt_m.get() && altitude_m <= max_allowed_alt_m.get();
 }
@@ -266,10 +337,70 @@ bool AP_GPS::AP_GPS_Validator::is_position_ok(const AP_GPS::GPS_State& state) co
 
 bool AP_GPS::AP_GPS_Validator::is_time_ok(const AP_GPS::GPS_State& state, uint32_t now_ms) const {
     if (last_gps_time_ms == UINT32_MAX) {
-        return false; // no prior sample
+        return false; // no prior sample yet
     }
+    // Reject samples that arrive faster than the configured minimum interval.
+    // This is a wall-clock rate limiter, not a GPS time accuracy check.
     const uint32_t dt_ms = now_ms - last_gps_time_ms;
-    return dt_ms >= static_cast<uint32_t>(time_accuracy_ms.get());
+    return dt_ms >= static_cast<uint32_t>(min_dt_ms.get());
+}
+
+bool AP_GPS::AP_GPS_Validator::is_gps_time_ok(const AP_GPS::GPS_State& state) const {
+    // time_week == 0 means the GPS has no satellite time lock - not a spoofing
+    // indicator, so skip the check entirely rather than failing.
+    if (state.time_week == 0) {
+        return true;
+    }
+    // No accepted baseline yet; nothing to compare against.
+    if (!last_state_valid || last_state.time_week == 0) {
+        return true;
+    }
+    // GPS week number must never decrease - week rollover always increments it.
+    // A decreasing week is an unambiguous spoofing/replay indicator regardless
+    // of the GPS driver in use.
+    if (state.time_week < last_state.time_week) {
+        return false;
+    }
+    // Within the same week, time_week_ms (iTOW) must not regress beyond the
+    // configured tolerance.
+    if (state.time_week == last_state.time_week) {
+        const int32_t delta_ms = static_cast<int32_t>(state.time_week_ms) -
+                                 static_cast<int32_t>(last_state.time_week_ms);
+        if (delta_ms < -static_cast<int32_t>(gps_time_tolerance_ms.get())) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool AP_GPS::AP_GPS_Validator::is_horizontal_accuracy_ok(const AP_GPS::GPS_State& state) const {
+    if (!state.have_horizontal_accuracy) {
+        return true;  // driver does not report accuracy, skip check
+    }
+    const float threshold = max_h_accuracy_m.get();
+    if (threshold <= 0.0f) {
+        return true;  // disabled
+    }
+    return state.horizontal_accuracy <= threshold;
+}
+
+bool AP_GPS::AP_GPS_Validator::is_vertical_accuracy_ok(const AP_GPS::GPS_State& state) const {
+    if (!state.have_vertical_accuracy) {
+        return true;  // driver does not report accuracy, skip check
+    }
+    const float threshold = max_v_accuracy_m.get();
+    if (threshold <= 0.0f) {
+        return true;  // disabled
+    }
+    return state.vertical_accuracy <= threshold;
+}
+
+bool AP_GPS::AP_GPS_Validator::is_undulation_ok(const AP_GPS::GPS_State& state) const {
+    if (!state.have_undulation) {
+        return true;  // driver does not report undulation, skip check
+    }
+    return state.undulation >= min_undulation_m.get() &&
+           state.undulation <= max_undulation_m.get();
 }
 
 AP_GPS::AP_GPS_Validator::Action AP_GPS::AP_GPS_Validator::get_gps_failure_action() const {
@@ -285,8 +416,14 @@ AP_GPS::AP_GPS_Validator::FailureReason AP_GPS::AP_GPS_Validator::first_failure_
     if (!is_satellites_ok(state)) {
         return FailureReason::SATS;
     }
+    if (!is_sat_count_ok(state)) {
+        return FailureReason::SAT_JUMP;
+    }
     if (!is_time_ok(state, now_ms)) {
         return FailureReason::TIME;
+    }
+    if (!is_gps_time_ok(state)) {
+        return FailureReason::GPS_TIME;
     }
     if (!is_horizontal_speed_ok(state, now_ms)) {
         return FailureReason::HSPEED;
@@ -300,6 +437,15 @@ AP_GPS::AP_GPS_Validator::FailureReason AP_GPS::AP_GPS_Validator::first_failure_
     if (!is_position_ok(state)) {
         return FailureReason::POS;
     }
+    if (!is_horizontal_accuracy_ok(state)) {
+        return FailureReason::H_ACCURACY;
+    }
+    if (!is_vertical_accuracy_ok(state)) {
+        return FailureReason::V_ACCURACY;
+    }
+    if (!is_undulation_ok(state)) {
+        return FailureReason::UND;
+    }
     return FailureReason::NONE;
 }
 
@@ -308,6 +454,9 @@ void AP_GPS::AP_GPS_Validator::send_failure_text(AP_GPS::AP_GPS_Validator::Failu
     switch (reason) {
     case AP_GPS::AP_GPS_Validator::FailureReason::SATS:
         GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "GPS %d: bad sats", gps_instance_plus1);
+        break;
+    case AP_GPS::AP_GPS_Validator::FailureReason::SAT_JUMP:
+        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "GPS %d: sat count jump", gps_instance_plus1);
         break;
     case AP_GPS::AP_GPS_Validator::FailureReason::HSPEED:
         GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "GPS %d: bad hspeed", gps_instance_plus1);
@@ -323,6 +472,18 @@ void AP_GPS::AP_GPS_Validator::send_failure_text(AP_GPS::AP_GPS_Validator::Failu
         break;
     case AP_GPS::AP_GPS_Validator::FailureReason::POS:
         GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "GPS %d: bad pos", gps_instance_plus1);
+        break;
+    case AP_GPS::AP_GPS_Validator::FailureReason::GPS_TIME:
+        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "GPS %d: gps time regressed", gps_instance_plus1);
+        break;
+    case AP_GPS::AP_GPS_Validator::FailureReason::H_ACCURACY:
+        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "GPS %d: h accuracy too low", gps_instance_plus1);
+        break;
+    case AP_GPS::AP_GPS_Validator::FailureReason::V_ACCURACY:
+        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "GPS %d: v accuracy too low", gps_instance_plus1);
+        break;
+    case AP_GPS::AP_GPS_Validator::FailureReason::UND:
+        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "GPS %d: bad undulation", gps_instance_plus1);
         break;
     case AP_GPS::AP_GPS_Validator::FailureReason::NONE:
     default:

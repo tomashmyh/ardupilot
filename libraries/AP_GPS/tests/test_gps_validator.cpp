@@ -79,6 +79,43 @@ static void establish_good_committed(TestGPSValidator& validator, uint32_t t0_ms
     ASSERT_TRUE(feed_good(validator, t0_ms + 10 + 5000, t0_ms + 10 + 5000));
 }
 
+// Attach GPS satellite time fields to any state without altering other fields.
+static AP_GPS::GPS_State with_gps_time(AP_GPS::GPS_State state, uint16_t week, uint32_t week_ms)
+{
+    state.time_week = week;
+    state.time_week_ms = week_ms;
+    return state;
+}
+
+// Enable and set horizontal position accuracy on any state.
+static AP_GPS::GPS_State with_h_accuracy(AP_GPS::GPS_State state, float accuracy_m)
+{
+    state.horizontal_accuracy = accuracy_m;
+    state.have_horizontal_accuracy = true;
+    return state;
+}
+
+// Enable and set vertical position accuracy on any state.
+static AP_GPS::GPS_State with_v_accuracy(AP_GPS::GPS_State state, float accuracy_m)
+{
+    state.vertical_accuracy = accuracy_m;
+    state.have_vertical_accuracy = true;
+    return state;
+}
+
+// Enable and set geoid undulation on any state.
+static AP_GPS::GPS_State with_undulation(AP_GPS::GPS_State state, float undulation_m)
+{
+    state.undulation = undulation_m;
+    state.have_undulation = true;
+    return state;
+}
+
+static void anchor_gps_time(TestGPSValidator& validator, uint32_t t_ms, uint16_t week, uint32_t week_ms)
+{
+    ASSERT_TRUE(feed_state(validator, t_ms, with_gps_time(make_good(t_ms), week, week_ms)));
+}
+
 TEST(AP_GPS_Validator, Disabled_AlwaysFalse)
 {
     TestGPSValidator validator{};
@@ -379,6 +416,273 @@ TEST(AP_GPS_Validator, NONE_WhenAllChecksPass_AndAlreadyCommittedGood)
 
     // Once committed good, another good sample should remain trusted.
     ASSERT_TRUE(feed_good(validator, 6000, 6000));
+}
+
+TEST(AP_GPS_Validator, Bootstrap_SpeedChecksSkipped_OnFirstValidSample)
+{
+    TestGPSValidator validator{};
+    validator.apply_enable_state(true);
+    validator.change_action_on_failure(AP_GPS::AP_GPS_Validator::Action::ONLY_DISABLE_GPS_USE);
+
+    // t=0: TIME gate fires (last_gps_time_ms == UINT32_MAX sentinel). Bad.
+    ASSERT_FALSE(feed_good(validator, 0, 0));
+
+    // t=10ms: TIME passes. Speed checks are SKIPPED because last_state_valid
+    // is still false - no distance-from-origin false-positive.
+    // Debounce starts here.
+    ASSERT_FALSE(feed_good(validator, 10, 10));
+
+    // t=5010ms: 5s of continuous good -> commits to true.
+    ASSERT_TRUE(feed_good(validator, 5010, 5010));
+}
+
+TEST(AP_GPS_Validator, GpsTime_Pass_Monotonic)
+{
+    TestGPSValidator validator{};
+    validator.apply_enable_state(true);
+    validator.change_action_on_failure(AP_GPS::AP_GPS_Validator::Action::ONLY_DISABLE_GPS_USE);
+
+    establish_good_committed(validator, 0);
+    anchor_gps_time(validator, 6000, 2350, 500000);
+
+    // Normal forward advance
+    auto s = with_gps_time(make_good(7000), 2350, 501000);
+    ASSERT_TRUE(feed_state(validator, 7000, s));
+}
+
+TEST(AP_GPS_Validator, GpsTime_Pass_WeekAdvance)
+{
+    TestGPSValidator validator{};
+    validator.apply_enable_state(true);
+    validator.change_action_on_failure(AP_GPS::AP_GPS_Validator::Action::ONLY_DISABLE_GPS_USE);
+
+    establish_good_committed(validator, 0);
+    // Anchor near end of week
+    anchor_gps_time(validator, 6000, 2350, 604799000);
+
+    // Next sample is in the following week (normal GPS week rollover)
+    auto s = with_gps_time(make_good(7000), 2351, 100);
+    ASSERT_TRUE(feed_state(validator, 7000, s));
+}
+
+TEST(AP_GPS_Validator, GpsTime_Fail_WeekRegression)
+{
+    TestGPSValidator validator{};
+    validator.apply_enable_state(true);
+    validator.change_action_on_failure(AP_GPS::AP_GPS_Validator::Action::ONLY_DISABLE_GPS_USE);
+
+    establish_good_committed(validator, 0);
+    anchor_gps_time(validator, 6000, 2350, 500000);
+
+    // GPS week decreases - unambiguous replay/spoofing indicator
+    auto bad = with_gps_time(make_good(7000), 2349, 604000000);
+    ASSERT_FALSE(feed_state(validator, 7000, bad));
+}
+
+TEST(AP_GPS_Validator, GpsTime_Fail_MsRegressionBeyondTolerance)
+{
+    TestGPSValidator validator{};
+    validator.apply_enable_state(true);
+    validator.change_action_on_failure(AP_GPS::AP_GPS_Validator::Action::ONLY_DISABLE_GPS_USE);
+
+    establish_good_committed(validator, 0);
+    anchor_gps_time(validator, 6000, 2350, 500000);
+
+    // Regression of 600 ms > default tolerance of 500 ms -> fail
+    auto bad = with_gps_time(make_good(7000), 2350, 499400);
+    ASSERT_FALSE(feed_state(validator, 7000, bad));
+}
+
+TEST(AP_GPS_Validator, GpsTime_Pass_SmallMsRegressionWithinTolerance)
+{
+    TestGPSValidator validator{};
+    validator.apply_enable_state(true);
+    validator.change_action_on_failure(AP_GPS::AP_GPS_Validator::Action::ONLY_DISABLE_GPS_USE);
+
+    establish_good_committed(validator, 0);
+    anchor_gps_time(validator, 6000, 2350, 500000);
+
+    // Regression of 400 ms < default tolerance of 500 ms -> pass.
+    auto s = with_gps_time(make_good(7000), 2350, 499600);
+    ASSERT_TRUE(feed_state(validator, 7000, s));
+}
+
+TEST(AP_GPS_Validator, SatJump_Pass_SmallIncrease)
+{
+    TestGPSValidator validator{};
+    validator.apply_enable_state(true);
+    validator.change_action_on_failure(AP_GPS::AP_GPS_Validator::Action::ONLY_DISABLE_GPS_USE);
+
+    establish_good_committed(validator, 0);  // last_state.num_sats = 10
+
+    // +2 sats (10 -> 12), well within default limit of 10 -> pass
+    auto s = make_state(0, 6000, 50.4501, 30.5234, 1900.0f, 12);
+    ASSERT_TRUE(feed_state(validator, 6000, s));
+}
+
+TEST(AP_GPS_Validator, SatJump_Pass_AtExactLimit)
+{
+    TestGPSValidator validator{};
+    validator.apply_enable_state(true);
+    validator.change_action_on_failure(AP_GPS::AP_GPS_Validator::Action::ONLY_DISABLE_GPS_USE);
+
+    establish_good_committed(validator, 0);  // last_state.num_sats = 10
+
+    // +10 sats (10 -> 20), exactly at the default limit -> pass (limit is inclusive)
+    auto s = make_state(0, 6000, 50.4501, 30.5234, 1900.0f, 20);
+    ASSERT_TRUE(feed_state(validator, 6000, s));
+}
+
+TEST(AP_GPS_Validator, SatJump_Fail_LargeIncrease)
+{
+    TestGPSValidator validator{};
+    validator.apply_enable_state(true);
+    validator.change_action_on_failure(AP_GPS::AP_GPS_Validator::Action::ONLY_DISABLE_GPS_USE);
+
+    establish_good_committed(validator, 0);  // last_state.num_sats = 10
+
+    // +14 sats (10 -> 24), exceeds default limit of 10 -> fail (spoofing indicator)
+    auto s = make_state(0, 6000, 50.4501, 30.5234, 1900.0f, 24);
+    ASSERT_FALSE(feed_state(validator, 6000, s));
+}
+
+TEST(AP_GPS_Validator, SatJump_Pass_DecreaseNotSuspicious)
+{
+    TestGPSValidator validator{};
+    validator.apply_enable_state(true);
+    validator.change_action_on_failure(AP_GPS::AP_GPS_Validator::Action::ONLY_DISABLE_GPS_USE);
+
+    establish_good_committed(validator, 0);  // last_state.num_sats = 10
+
+    // Dropping sats is normal signal loss; only upward jumps are suspicious -> pass
+    auto s = make_state(0, 6000, 50.4501, 30.5234, 1900.0f, 7);
+    ASSERT_TRUE(feed_state(validator, 6000, s));
+}
+
+TEST(AP_GPS_Validator, HAccuracy_Pass_BelowThreshold)
+{
+    TestGPSValidator validator{};
+    validator.apply_enable_state(true);
+    validator.change_action_on_failure(AP_GPS::AP_GPS_Validator::Action::ONLY_DISABLE_GPS_USE);
+
+    establish_good_committed(validator, 0);
+
+    // 3.0 m < 5.0 m (default H_ACC_MAX) -> pass
+    ASSERT_TRUE(feed_state(validator, 6000, with_h_accuracy(make_good(6000), 3.0f)));
+}
+
+TEST(AP_GPS_Validator, HAccuracy_Fail_AboveThreshold)
+{
+    TestGPSValidator validator{};
+    validator.apply_enable_state(true);
+    validator.change_action_on_failure(AP_GPS::AP_GPS_Validator::Action::ONLY_DISABLE_GPS_USE);
+
+    establish_good_committed(validator, 0);
+
+    // 7.0 m > 5.0 m (default H_ACC_MAX) -> fail
+    ASSERT_FALSE(feed_state(validator, 6000, with_h_accuracy(make_good(6000), 7.0f)));
+}
+
+TEST(AP_GPS_Validator, HAccuracy_Skip_WhenFlagNotSet)
+{
+    TestGPSValidator validator{};
+    validator.apply_enable_state(true);
+    validator.change_action_on_failure(AP_GPS::AP_GPS_Validator::Action::ONLY_DISABLE_GPS_USE);
+
+    establish_good_committed(validator, 0);
+
+    // have_horizontal_accuracy == false (make_good default) -> check skipped
+    auto s = make_good(6000);
+    s.horizontal_accuracy = 9999.0f;  // would fail if the flag were set; flag stays false
+    ASSERT_TRUE(feed_state(validator, 6000, s));
+}
+
+TEST(AP_GPS_Validator, VAccuracy_Pass_BelowThreshold)
+{
+    TestGPSValidator validator{};
+    validator.apply_enable_state(true);
+    validator.change_action_on_failure(AP_GPS::AP_GPS_Validator::Action::ONLY_DISABLE_GPS_USE);
+
+    establish_good_committed(validator, 0);
+
+    // 5.0 m < 8.0 m (default V_ACC_MAX) -> pass
+    ASSERT_TRUE(feed_state(validator, 6000, with_v_accuracy(make_good(6000), 5.0f)));
+}
+
+TEST(AP_GPS_Validator, VAccuracy_Fail_AboveThreshold)
+{
+    TestGPSValidator validator{};
+    validator.apply_enable_state(true);
+    validator.change_action_on_failure(AP_GPS::AP_GPS_Validator::Action::ONLY_DISABLE_GPS_USE);
+
+    establish_good_committed(validator, 0);
+
+    // 10.0 m > 8.0 m (default V_ACC_MAX) -> fail
+    ASSERT_FALSE(feed_state(validator, 6000, with_v_accuracy(make_good(6000), 10.0f)));
+}
+
+TEST(AP_GPS_Validator, VAccuracy_Skip_WhenFlagNotSet)
+{
+    TestGPSValidator validator{};
+    validator.apply_enable_state(true);
+    validator.change_action_on_failure(AP_GPS::AP_GPS_Validator::Action::ONLY_DISABLE_GPS_USE);
+
+    establish_good_committed(validator, 0);
+
+    // have_vertical_accuracy == false (make_good default) -> check skipped
+    auto s = make_good(6000);
+    s.vertical_accuracy = 9999.0f;  // would fail if the flag were set; flag stays false
+    ASSERT_TRUE(feed_state(validator, 6000, s));
+}
+
+TEST(AP_GPS_Validator, Undulation_Pass_InRange)
+{
+    TestGPSValidator validator{};
+    validator.apply_enable_state(true);
+    validator.change_action_on_failure(AP_GPS::AP_GPS_Validator::Action::ONLY_DISABLE_GPS_USE);
+
+    establish_good_committed(validator, 0);
+
+    // 35.0m is inside [-120, 100] default range -> pass
+    ASSERT_TRUE(feed_state(validator, 6000, with_undulation(make_good(6000), 35.0f)));
+}
+
+TEST(AP_GPS_Validator, Undulation_Fail_AboveMax)
+{
+    TestGPSValidator validator{};
+    validator.apply_enable_state(true);
+    validator.change_action_on_failure(AP_GPS::AP_GPS_Validator::Action::ONLY_DISABLE_GPS_USE);
+
+    establish_good_committed(validator, 0);
+
+    // 150.0m > 100.0m (default UND_MAX) -> physically impossible, likely spoofed
+    ASSERT_FALSE(feed_state(validator, 6000, with_undulation(make_good(6000), 150.0f)));
+}
+
+TEST(AP_GPS_Validator, Undulation_Fail_BelowMin)
+{
+    TestGPSValidator validator{};
+    validator.apply_enable_state(true);
+    validator.change_action_on_failure(AP_GPS::AP_GPS_Validator::Action::ONLY_DISABLE_GPS_USE);
+
+    establish_good_committed(validator, 0);
+
+    // -150.0m < -120.0m (default UND_MIN) -> below Earth's minimum -> likely spoofed
+    ASSERT_FALSE(feed_state(validator, 6000, with_undulation(make_good(6000), -150.0f)));
+}
+
+TEST(AP_GPS_Validator, Undulation_Skip_WhenFlagNotSet)
+{
+    TestGPSValidator validator{};
+    validator.apply_enable_state(true);
+    validator.change_action_on_failure(AP_GPS::AP_GPS_Validator::Action::ONLY_DISABLE_GPS_USE);
+
+    establish_good_committed(validator, 0);
+
+    // have_undulation == false (make_good default) -> check skipped
+    auto s = make_good(6000);
+    s.undulation = 9999.0f;  // would fail if the flag were set; flag stays false
+    ASSERT_TRUE(feed_state(validator, 6000, s));
 }
 
 AP_GTEST_MAIN()

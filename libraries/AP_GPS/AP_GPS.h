@@ -248,7 +248,7 @@ public:
     /// Startup initialisation.
     void init();
 
-    // ethod for APPPeriph to set the default type for the first GPS instance:
+    // Method for APPeriph to set the default type for the first GPS instance:
     void set_default_type_for_gps1(uint8_t default_type) {
         params[0].type.set_default(default_type);
     }
@@ -651,20 +651,30 @@ public:
         enum class FailureReason : uint8_t {
             NONE = 0,
             SATS,
+            SAT_JUMP,
             HSPEED,
             VSPEED,
             ALT,
             TIME,
             POS,
+            GPS_TIME,
+            H_ACCURACY,
+            V_ACCURACY,
+            UND,
         };
 
     private:
         bool is_satellites_ok(const AP_GPS::GPS_State& state) const;
+        bool is_sat_count_ok(const AP_GPS::GPS_State& state) const;
         bool is_horizontal_speed_ok(const AP_GPS::GPS_State& state, uint32_t now_ms) const;
         bool is_vertical_speed_ok(const AP_GPS::GPS_State& state, uint32_t now_ms) const;
         bool is_altitude_ok(const AP_GPS::GPS_State& state) const;
         bool is_position_ok(const AP_GPS::GPS_State& state) const;
         bool is_time_ok(const AP_GPS::GPS_State& state, uint32_t gps_time_ms) const;
+        bool is_gps_time_ok(const AP_GPS::GPS_State& state) const;
+        bool is_horizontal_accuracy_ok(const AP_GPS::GPS_State& state) const;
+        bool is_vertical_accuracy_ok(const AP_GPS::GPS_State& state) const;
+        bool is_undulation_ok(const AP_GPS::GPS_State& state) const;
         FailureReason first_failure_reason(const AP_GPS::GPS_State& state, uint32_t now_ms) const;
 
         Action get_gps_failure_action() const;
@@ -676,11 +686,17 @@ public:
         AP_Int8 action_on_failure;
         AP_Int8 gps_instance_to_validate;
         AP_Int8 min_sat_count;
+        AP_Int8 max_sat_jump;
         AP_Int16 max_horizontal_speed_mps;
         AP_Int16 max_vertical_speed_mps;
         AP_Int16 max_allowed_alt_m;
         AP_Int16 min_allowed_alt_m;
-        AP_Int16 time_accuracy_ms;
+        AP_Int16 min_dt_ms;
+        AP_Int16 gps_time_tolerance_ms;
+        AP_Float max_h_accuracy_m;
+        AP_Float max_v_accuracy_m;
+        AP_Float min_undulation_m;
+        AP_Float max_undulation_m;
         AP_Float min_valid_lat;
         AP_Float min_valid_lon;
         AP_Float max_valid_lat;
@@ -688,6 +704,7 @@ public:
 
         bool is_gps_good{false};
         AP_GPS::GPS_State last_state{};
+        bool last_state_valid{false};
         uint32_t last_gps_time_ms{UINT32_MAX};
         bool pending_good_valid{false};
         uint32_t pending_good_since_ms{0};
