@@ -1,6 +1,4 @@
 # hw definition file specific only for Salamander
 
-define HAL_CRSF_TELEM_ENABLED 0
-
 define AP_FIELD_ELEVATION_ENABLED 0
 
