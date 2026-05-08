@@ -48,9 +48,6 @@ void AP_GPS_MAV::handle_msg(const mavlink_message_t &msg)
             mavlink_msg_gps_input_decode(&msg, &packet);
 
             // check if target instance belongs to incoming gps data.
-            if (state.instance < packet.gps_id) {
-                return;
-            }
             if (packet.gps_id != gps._active_mav_gps_index) {
                 return;
             }
