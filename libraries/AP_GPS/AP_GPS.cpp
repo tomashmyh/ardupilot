@@ -291,7 +291,7 @@ const AP_Param::GroupInfo AP_GPS::var_info[] = {
     // @User: Advanced
     AP_GROUPINFO("_VISNAV_SYNC", 35, AP_GPS, _is_visnav_sync_enabled, 1),
 
-    AP_GROUPINFO("_MAV_INDX", 36, AP_GPS, _active_mav_gps_index, 2),
+    AP_GROUPINFO("_MAV_INDX", 36, AP_GPS, _active_mav_gps_index, 1),
 
 
     AP_GROUPEND
