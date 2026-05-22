@@ -155,7 +155,7 @@ const AP_Param::GroupInfo AP_GPS::AP_GPS_Validator::var_info[] = {
     // @DisplayName: Maximum satellite count jump
     // @Description: Maximum allowed single-step increase in reported satellite count while already tracking. A real receiver acquires satellites gradually; a sudden large upward jump (e.g. 6 to 20) indicates a spoofing attack injecting many fake signals simultaneously. Only upward jumps are checked - drops are normal signal loss already covered by SAT_N. Set 0 to disable.
     // @User: Advanced
-    AP_GROUPINFO("SAT_JMP", 19, AP_GPS::AP_GPS_Validator, max_sat_jump, 10),
+    AP_GROUPINFO("SAT_JMP", 19, AP_GPS::AP_GPS_Validator, max_sat_jump, 0),
 
     AP_GROUPEND
 };

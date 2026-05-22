@@ -728,7 +728,6 @@ protected:
     AP_Int8 _blend_mask;
     AP_Int16 _driver_options;
     AP_Int8 _primary;
-    AP_Int8 _is_visnav_sync_enabled;
     AP_Int8 _active_mav_gps_index;
 
     uint32_t _log_gps_bit = -1;
