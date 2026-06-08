@@ -661,6 +661,8 @@ public:
             H_ACCURACY,
             V_ACCURACY,
             UND,
+            LONG_HSPEED,
+            LONG_VSPEED,
         };
 
     private:
@@ -668,6 +670,8 @@ public:
         bool is_sat_count_ok(const AP_GPS::GPS_State& state) const;
         bool is_horizontal_speed_ok(const AP_GPS::GPS_State& state, uint32_t now_ms) const;
         bool is_vertical_speed_ok(const AP_GPS::GPS_State& state, uint32_t now_ms) const;
+        bool is_long_term_horizontal_speed_ok(const AP_GPS::GPS_State& state) const;
+        bool is_long_term_vertical_speed_ok(const AP_GPS::GPS_State& state) const;
         bool is_altitude_ok(const AP_GPS::GPS_State& state) const;
         bool is_position_ok(const AP_GPS::GPS_State& state) const;
         bool is_time_ok(const AP_GPS::GPS_State& state, uint32_t gps_time_ms) const;
@@ -689,6 +693,8 @@ public:
         AP_Int8 max_sat_jump;
         AP_Int16 max_horizontal_speed_mps;
         AP_Int16 max_vertical_speed_mps;
+        AP_Int16 max_lt_horizontal_speed_mps;
+        AP_Int16 max_lt_vertical_speed_mps;
         AP_Int16 max_allowed_alt_m;
         AP_Int16 min_allowed_alt_m;
         AP_Int16 min_dt_ms;
@@ -709,6 +715,19 @@ public:
         bool pending_good_valid{false};
         uint32_t pending_good_since_ms{0};
         const uint16_t CHANGE_STATE_DELAY_S{5};
+        // Max wall-clock gap between consecutive good samples during debounce.
+        // A longer silence resets the timer so the GPS must sustain a full
+        // uninterrupted window before being trusted.
+        const uint32_t DEBOUNCE_MAX_GAP_MS{2000};
+
+        // Long-term speed check: anchor baseline updated every ANCHOR_INTERVAL_S
+        // seconds. Speed computed as dist(now, anchor)/dt - immune to per-sample
+        // noise and catches sustained drift that slips under the per-sample check.
+        // Invalidated whenever GPS transitions from good to bad.
+        AP_GPS::GPS_State anchor_state{};
+        bool anchor_state_valid{false};
+        uint32_t anchor_last_update_ms{0};
+        const uint32_t ANCHOR_INTERVAL_S{2};
     };
 
 protected:

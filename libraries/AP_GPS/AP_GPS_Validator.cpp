@@ -51,7 +51,7 @@ const AP_Param::GroupInfo AP_GPS::AP_GPS_Validator::var_info[] = {
     // @Description: Defines the maximum horizontal velocity in meters per seconds to consider GPS as a good
     // @Units: mps
     // @User: Advanced
-    AP_GROUPINFO("V_H_MAX", 4, AP_GPS::AP_GPS_Validator, max_horizontal_speed_mps, 30),
+    AP_GROUPINFO("V_H_MAX", 4, AP_GPS::AP_GPS_Validator, max_horizontal_speed_mps, 45),
 
     // @Param: V_V_MAX
     // @DisplayName: Maximum vertical velocity
@@ -155,7 +155,21 @@ const AP_Param::GroupInfo AP_GPS::AP_GPS_Validator::var_info[] = {
     // @DisplayName: Maximum satellite count jump
     // @Description: Maximum allowed single-step increase in reported satellite count while already tracking. A real receiver acquires satellites gradually; a sudden large upward jump (e.g. 6 to 20) indicates a spoofing attack injecting many fake signals simultaneously. Only upward jumps are checked - drops are normal signal loss already covered by SAT_N. Set 0 to disable.
     // @User: Advanced
-    AP_GROUPINFO("SAT_JMP", 19, AP_GPS::AP_GPS_Validator, max_sat_jump, 0),
+    AP_GROUPINFO("SAT_JMP", 19, AP_GPS::AP_GPS_Validator, max_sat_jump, 10),
+
+    // @Param: LT_VH_MAX
+    // @DisplayName: Maximum long-term horizontal speed
+    // @Description: Maximum allowed average horizontal speed over the long-term anchor window (2s). Complements V_H_MAX: while V_H_MAX catches instantaneous position jumps, this catches sustained gradual drift that stays under the per-sample threshold. Set to no less than the vehicle's actual maximum horizontal speed.
+    // @Units: mps
+    // @User: Advanced
+    AP_GROUPINFO("LT_VH", 20, AP_GPS::AP_GPS_Validator, max_lt_horizontal_speed_mps, 30),
+
+    // @Param: LT_VV_MAX
+    // @DisplayName: Maximum long-term vertical speed
+    // @Description: Maximum allowed average vertical speed over the long-term anchor window (2s). Complements V_V_MAX: while V_V_MAX catches instantaneous altitude jumps, this catches sustained vertical drift that stays under the per-sample threshold. Set to no less than the vehicle's actual maximum vertical speed.
+    // @Units: mps
+    // @User: Advanced
+    AP_GROUPINFO("LT_VV", 21, AP_GPS::AP_GPS_Validator, max_lt_vertical_speed_mps, 15),
 
     AP_GROUPEND
 };
@@ -217,6 +231,9 @@ bool AP_GPS::AP_GPS_Validator::trust_gps(const AP_GPS::GPS_State& state) {
                 send_failure_text(fail, state.instance + 1);
             }
             is_gps_good = false;
+            // Invalidate the anchor: the position is no longer trusted, so any
+            // anchor-relative speed computed during recovery would be meaningless.
+            anchor_state_valid = false;
         }
         // Cancel any pending recovery timer
         pending_good_valid = false;
@@ -231,9 +248,30 @@ bool AP_GPS::AP_GPS_Validator::trust_gps(const AP_GPS::GPS_State& state) {
             last_state_valid = true;
             pending_good_valid = false;
 
+            // Advance the long-term anchor every ANCHOR_INTERVAL_S seconds.
+            // Between updates the anchor is fixed, so the long-term speed check
+            // measures average displacement over a growing window (0..ANCHOR_INTERVAL_S).
+            if (!anchor_state_valid ||
+                (now - anchor_last_update_ms) >= (ANCHOR_INTERVAL_S * 1000U)) {
+                anchor_state = state;
+                anchor_state_valid = true;
+                anchor_last_update_ms = now;
+            }
+
         } else {
             // Recovering (debounce in progress): keep the baseline frozen at the
             // last pre-outage accepted position.
+
+            // A gap larger than DEBOUNCE_MAX_GAP_MS between consecutive calls
+            // means GPS stopped sending during recovery. Reset the debounce so
+            // the GPS must sustain a full uninterrupted window to be trusted.
+            // last_gps_time_ms still holds the timestamp of the previous call.
+            if (pending_good_valid &&
+                (last_gps_time_ms != UINT32_MAX) &&
+                ((now - last_gps_time_ms) > DEBOUNCE_MAX_GAP_MS)) {
+                pending_good_valid = false;
+            }
+
             if (!pending_good_valid) {
                 pending_good_valid = true;
                 pending_good_since_ms = now;
@@ -246,6 +284,11 @@ bool AP_GPS::AP_GPS_Validator::trust_gps(const AP_GPS::GPS_State& state) {
                 last_state_valid = true;
                 is_gps_good = true;
                 pending_good_valid = false;
+
+                // Start a fresh long-term anchor from the recovery point.
+                anchor_state = state;
+                anchor_state_valid = true;
+                anchor_last_update_ms = now;
 
                 if (inform) {
                     GCS_SEND_TEXT(MAV_SEVERITY_INFO, "GPS %d: good", state.instance + 1);
@@ -268,8 +311,8 @@ bool AP_GPS::AP_GPS_Validator::is_satellites_ok(const AP_GPS::GPS_State& state) 
 }
 
 bool AP_GPS::AP_GPS_Validator::is_sat_count_ok(const AP_GPS::GPS_State& state) const {
-    if (!last_state_valid) {
-        return true;  // no baseline yet, skip check
+    if (!last_state_valid || !is_gps_good) {
+        return true;  // no baseline, or recovering - jump is expected, skip check
     }
     const int8_t limit = max_sat_jump.get();
     if (limit <= 0) {
@@ -305,10 +348,12 @@ bool AP_GPS::AP_GPS_Validator::is_vertical_speed_ok(const AP_GPS::GPS_State& sta
     if (!last_state_valid) {
         return true;  // no baseline yet, skip check
     }
-    const float time_diff_s = (state.last_gps_time_ms - last_state.last_gps_time_ms) * 0.001f;
-    if (time_diff_s <= 0) {
+
+    const int32_t dt_ms = int32_t(state.last_gps_time_ms - last_state.last_gps_time_ms);
+    if (dt_ms <= 0) {
         return true;
     }
+    const float time_diff_s = dt_ms * 0.001f;
 
     ftype altitude_diff_m = 0.0;
     if (!state.location.get_alt_distance(last_state.location, altitude_diff_m)) {
@@ -318,6 +363,35 @@ bool AP_GPS::AP_GPS_Validator::is_vertical_speed_ok(const AP_GPS::GPS_State& sta
     const float vertical_speed_mps = fabsf(static_cast<float>(altitude_diff_m)) / time_diff_s;
 
     return vertical_speed_mps <= max_vertical_speed_mps;
+}
+
+bool AP_GPS::AP_GPS_Validator::is_long_term_horizontal_speed_ok(const AP_GPS::GPS_State& state) const {
+    if (!anchor_state_valid) {
+        return true;
+    }
+    const int32_t dt_ms = int32_t(state.last_gps_time_ms - anchor_state.last_gps_time_ms);
+    if (dt_ms <= 0) {
+        return true;
+    }
+    const float time_diff_s = dt_ms * 0.001f;
+    const float dist_m = static_cast<float>(state.location.get_distance(anchor_state.location));
+    return fabsf(dist_m) / time_diff_s <= max_lt_horizontal_speed_mps;
+}
+
+bool AP_GPS::AP_GPS_Validator::is_long_term_vertical_speed_ok(const AP_GPS::GPS_State& state) const {
+    if (!anchor_state_valid) {
+        return true;
+    }
+    const int32_t dt_ms = int32_t(state.last_gps_time_ms - anchor_state.last_gps_time_ms);
+    if (dt_ms <= 0) {
+        return true;
+    }
+    const float time_diff_s = dt_ms * 0.001f;
+    ftype alt_diff_m = 0.0;
+    if (!state.location.get_alt_distance(anchor_state.location, alt_diff_m)) {
+        return false;
+    }
+    return fabsf(static_cast<float>(alt_diff_m)) / time_diff_s <= max_lt_vertical_speed_mps;
 }
 
 bool AP_GPS::AP_GPS_Validator::is_altitude_ok(const AP_GPS::GPS_State& state) const {
@@ -446,6 +520,12 @@ AP_GPS::AP_GPS_Validator::FailureReason AP_GPS::AP_GPS_Validator::first_failure_
     if (!is_undulation_ok(state)) {
         return FailureReason::UND;
     }
+    if (!is_long_term_horizontal_speed_ok(state)) {
+        return FailureReason::LONG_HSPEED;
+    }
+    if (!is_long_term_vertical_speed_ok(state)) {
+        return FailureReason::LONG_VSPEED;
+    }
     return FailureReason::NONE;
 }
 
@@ -484,6 +564,12 @@ void AP_GPS::AP_GPS_Validator::send_failure_text(AP_GPS::AP_GPS_Validator::Failu
         break;
     case AP_GPS::AP_GPS_Validator::FailureReason::UND:
         GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "GPS %d: bad undulation", gps_instance_plus1);
+        break;
+    case AP_GPS::AP_GPS_Validator::FailureReason::LONG_HSPEED:
+        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "GPS %d: sustained hspeed", gps_instance_plus1);
+        break;
+    case AP_GPS::AP_GPS_Validator::FailureReason::LONG_VSPEED:
+        GCS_SEND_TEXT(MAV_SEVERITY_WARNING, "GPS %d: sustained vspeed", gps_instance_plus1);
         break;
     case AP_GPS::AP_GPS_Validator::FailureReason::NONE:
     default:
