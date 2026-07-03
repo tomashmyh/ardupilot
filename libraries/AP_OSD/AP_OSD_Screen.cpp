@@ -2459,7 +2459,8 @@ void AP_OSD_Screen::draw_pluscode(uint8_t x, uint8_t y)
 #endif
 
 /*
-  support callsign display from a file called callsign.txt
+  support callsign display from a file called callsign.txt or from
+  the CALLSIGN compile-time define (SD file takes precedence)
  */
 void AP_OSD_Screen::draw_callsign(uint8_t x, uint8_t y)
 {
@@ -2479,7 +2480,11 @@ void AP_OSD_Screen::draw_callsign(uint8_t x, uint8_t y)
     }
     if (callsign_data.str != nullptr) {
         backend->write(x, y, false, "%s", callsign_data.str);
+        return;
     }
+#endif
+#if defined(CALLSIGN)
+    backend->write(x, y, false, "%s", CALLSIGN);
 #endif
 }
 
