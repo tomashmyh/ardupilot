@@ -65,6 +65,8 @@ bool NavEKF3_core::setup_core(uint8_t _imu_index, uint8_t _core_index)
                 GCS_SEND_TEXT(severity, "EKF3 waiting for GPS config data");
             }
 #endif
+            update_gps_selection();
+            
             return false;
         }
         // limit the time delay value from the GPS library to a max of 250 msec which is the max value the EKF has been tested for.
